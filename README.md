@@ -2,7 +2,7 @@
 
 A local-first AI networking app for Mac that turns your projects into personalized outreach, social post drafts, and a visual professional network.
 
-**Status:** Product design stage. The app and integrations are not yet implemented.
+**Status:** A first local backend exists in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API); see the [API reference](backend/docs/api-reference.md). The Mac app UI and authorized LinkedIn access are not yet implemented.
 
 ## How it works
 
