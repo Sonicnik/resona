@@ -4,215 +4,276 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Networking Agent Prototype</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
 <style>
 :root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --bg: #0b0819;
-  --t1: #ffffff; --t2: rgba(255,255,255,.80); --t3: rgba(255,255,255,.60);
-  --violet: #a78bfa; --cyan: #22d3ee; --pink: #f0abfc; --dim: #6b6694;
-  --ok: #4ade80; --warn: #fbbf24; --danger: #fb7185;
+  --t1: #ffffff; --t2: rgba(255,255,255,.80); --t3: rgba(255,255,255,.55);
+  --accent-solid: #8b5cf6; --accent-hi: #a78bfa; --violet: #b4a2ff; --cyan: #5ee7f5; --dim: #8a86a3;
+  --ok: #32d74b; --warn: #ffd60a; --danger: #ff6961;
   --glass-thin: rgba(255,255,255,.06);
-  --glass: rgba(22,16,48,.42);
-  --glass-thick: rgba(16,11,36,.70);
-  --line: rgba(255,255,255,.14); --line-strong: rgba(255,255,255,.26);
-  --inset: rgba(255,255,255,.06); --sel: rgba(255,255,255,.12);
-  --accent: linear-gradient(135deg,#8b5cf6,#22d3ee);
+  --glass: rgba(24,18,50,.48);
+  --glass-thick: rgba(20,15,40,.74);
+  --line: rgba(255,255,255,.12); --line-strong: rgba(255,255,255,.22);
+  --inset: rgba(255,255,255,.07); --sel: rgba(255,255,255,.14);
   --accent-soft: rgba(167,139,250,.22); --accent-text: #e4dcff;
-  --r-lg: 22px; --r: 16px; --r-sm: 10px;
-  --spring: cubic-bezier(.34,1.4,.64,1); --ease: cubic-bezier(.2,.8,.2,1);
+  --spring: cubic-bezier(.34,1.35,.64,1); --ease: cubic-bezier(.2,.8,.2,1);
   color-scheme: dark;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
-body { background: var(--bg); color: var(--t1); font: 14px/1.5 Inter, -apple-system, sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased; }
+body { font: 13px/1.45 var(--font); color: var(--t1); overflow: hidden; -webkit-font-smoothing: antialiased; user-select: none;
+  background: radial-gradient(1100px 800px at 15% 0%, #43207a, transparent 60%), radial-gradient(1000px 700px at 95% 100%, #0d5163, transparent 60%), #0a0814; }
 button, input, textarea { font: inherit; color: inherit; }
-button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-h1, h2, h3 { font-family: "Space Grotesk", sans-serif; font-weight: 600; letter-spacing: -.01em; }
+button { cursor: default; }
+textarea, input { user-select: text; }
+:focus-visible { outline: 3px solid rgba(139,92,246,.6); outline-offset: 1px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -.01em; }
 
-/* Ambient aurora behind the 3D scene */
-.aurora { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+/* ---------- Menu bar ---------- */
+.menubar { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: 26px; display: flex; align-items: center; padding: 0 10px; gap: 2px;
+  background: rgba(16,12,30,.45); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%); font-size: 13px; }
+.mb-item { height: 22px; padding: 0 9px; border: 0; border-radius: 5px; background: none; display: flex; align-items: center; gap: 6px; }
+.mb-item:hover, .mb-item.open { background: rgba(255,255,255,.16); }
+.mb-item.mb-app { font-weight: 700; }
+.mb-spacer { flex: 1; }
+.mb-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.6px solid currentColor; display: grid; place-items: center; }
+.mb-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+body[data-status="paused"] .mb-dot::after { background: var(--warn); }
+body[data-status="catching"] .mb-dot::after { background: var(--cyan); }
+
+/* ---------- Window ---------- */
+.window { position: fixed; z-index: 1; inset: 44px 32px 32px; border-radius: 18px; overflow: hidden; background: var(--bg);
+  box-shadow: 0 40px 90px rgba(0,0,0,.6), 0 0 0 .5px rgba(0,0,0,.8);
+  transition: inset .45s var(--ease), border-radius .45s var(--ease), opacity .3s, transform .35s var(--ease); }
+.window::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 9; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.window.zoomed { inset: 26px 0 0; border-radius: 0; }
+.window.closed { opacity: 0; transform: scale(.94) translateY(20px); pointer-events: none; }
+
+.aurora { position: absolute; inset: 0; overflow: hidden; }
 .aurora i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; animation: drift 26s ease-in-out infinite alternate; }
-.aurora i:nth-child(1) { width: 60vw; height: 60vw; background: #6d28d9; top: -25vw; left: -10vw; }
-.aurora i:nth-child(2) { width: 50vw; height: 50vw; background: #0891b2; bottom: -25vw; right: -10vw; animation-delay: -8s; }
-.aurora i:nth-child(3) { width: 34vw; height: 34vw; background: #db2777; top: 35%; left: 45%; opacity: .32; animation-delay: -15s; }
-@keyframes drift { to { transform: translate(6vw, -4vw) scale(1.12); } }
+.aurora i:nth-child(1) { width: 60%; aspect-ratio: 1; background: #6d28d9; top: -30%; left: -10%; }
+.aurora i:nth-child(2) { width: 50%; aspect-ratio: 1; background: #0891b2; bottom: -30%; right: -10%; animation-delay: -8s; }
+.aurora i:nth-child(3) { width: 34%; aspect-ratio: 1; background: #db2777; top: 35%; left: 45%; opacity: .3; animation-delay: -15s; }
+@keyframes drift { to { transform: translate(6%, -4%) scale(1.12); } }
 body[data-status="paused"] .aurora i { animation-play-state: paused; filter: blur(90px) saturate(.4); }
 
-#scene { position: fixed; inset: 0; z-index: 1; transition: opacity .6s var(--ease), filter .6s var(--ease); }
-body:not([data-screen="network"]) #scene { opacity: .45; filter: saturate(.8); pointer-events: none; }
+#scene { position: absolute; inset: 0; transition: opacity .6s var(--ease), filter .6s var(--ease); }
+body:not([data-screen="network"]) #scene { opacity: .4; filter: saturate(.8); pointer-events: none; }
 .scene-fallback { position: absolute; inset: 0; display: grid; place-items: center; color: var(--t3); }
-.scene-tooltip { font: 500 12px Inter, sans-serif !important; padding: 6px 10px !important; border-radius: 8px !important; background: var(--glass-thick) !important; backdrop-filter: blur(12px); border: 1px solid var(--line); }
+.scene-tooltip { font: 500 12px var(--font) !important; padding: 5px 9px !important; border-radius: 7px !important; background: var(--glass-thick) !important; border: .5px solid var(--line); }
 
-/* Glass material */
-.glass { position: relative; background: var(--glass); border: 1px solid var(--line); border-radius: var(--r-lg);
-  backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
-  box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.16); }
-.glass.thick { background: var(--glass-thick); backdrop-filter: blur(36px) saturate(150%); -webkit-backdrop-filter: blur(36px) saturate(150%); }
-.glass.thin { background: var(--glass-thin); backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); }
-.glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(140deg, rgba(255,255,255,.09), transparent 38%); }
+/* ---------- Glass ---------- */
+.glass { position: relative; background: var(--glass); border: .5px solid var(--line); border-radius: 14px;
+  backdrop-filter: blur(30px) saturate(170%); -webkit-backdrop-filter: blur(30px) saturate(170%);
+  box-shadow: 0 10px 30px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.14); }
+.glass.thick { background: var(--glass-thick); backdrop-filter: blur(40px) saturate(160%); -webkit-backdrop-filter: blur(40px) saturate(160%); }
+.glass.thin { background: var(--glass-thin); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); }
+.glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(150deg, rgba(255,255,255,.08), transparent 35%); }
 .lit::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: radial-gradient(360px circle at var(--mx,-500px) var(--my,-500px), rgba(255,255,255,.10), transparent 45%); }
+  background: radial-gradient(320px circle at var(--mx,-500px) var(--my,-500px), rgba(255,255,255,.09), transparent 45%); }
 @media (prefers-reduced-transparency: reduce) {
-  .glass, .glass.thick, .glass.thin { background: #17112f; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .glass, .glass.thick, .glass.thin, .menubar { background: #1a1433; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
-/* App shell */
-.app { position: fixed; inset: 0; z-index: 2; display: grid; grid-template-columns: 228px minmax(0,1fr); gap: 16px; padding: 16px; pointer-events: none; }
-.sidebar, .screen:not(.network-screen), .net-ui > *, #person, #palette, #toast { pointer-events: auto; }
-.sidebar { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; }
-.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font: 600 15px "Space Grotesk", sans-serif; }
-.brand-mark { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); box-shadow: 0 0 24px rgba(139,92,246,.6); }
-.nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 12px; background: transparent; color: var(--t2); text-align: left; transition: background .2s, color .2s; }
-.nav-btn:hover { background: var(--inset); color: var(--t1); }
-.nav-btn[aria-current="page"] { background: var(--sel); color: var(--t1); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
-.nav-btn svg { width: 18px; height: 18px; flex: none; }
-.nav-btn .count { margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
-.sidebar .spacer { flex: 1; }
-.kbd-hint { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--inset); color: var(--t3); font-size: 12.5px; }
-kbd { font: 500 11px Inter, sans-serif; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line-strong); color: var(--t2); }
-.status { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--inset); color: var(--t2); font-size: 12.5px; text-align: left; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; box-shadow: 0 0 10px currentColor; color: var(--ok); }
+/* ---------- Window layout ---------- */
+.app { position: absolute; inset: 0; display: grid; grid-template-columns: 236px minmax(0,1fr); grid-template-rows: 52px minmax(0,1fr); gap: 0 8px; padding: 8px; pointer-events: none; }
+.sidebar, .toolbar > *, .screen:not(.network-screen), .net-ui > * { pointer-events: auto; }
+
+.sidebar { grid-row: 1 / 3; display: flex; flex-direction: column; padding: 12px 8px 10px; overflow-y: auto; }
+.traffic { display: flex; gap: 8px; padding: 2px 6px 14px; }
+.traffic button { width: 12px; height: 12px; border-radius: 50%; border: .5px solid rgba(0,0,0,.25); padding: 0; display: grid; place-items: center; font-size: 9px; line-height: 1; color: transparent; }
+.traffic .close { background: #ff5f57; } .traffic .min { background: #febc2e; } .traffic .zoom { background: #28c840; }
+.traffic:hover button { color: rgba(0,0,0,.6); }
+.sb-head { font-size: 11px; font-weight: 600; color: var(--t3); padding: 12px 10px 4px; }
+.nav-btn { display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--t1); text-align: left; font-size: 13px; }
+.nav-btn:hover { background: var(--inset); }
+.nav-btn[aria-current="page"] { background: var(--sel); }
+.nav-btn svg { width: 16px; height: 16px; flex: none; color: var(--accent-hi); }
+.nav-btn .count { margin-left: auto; font-size: 12px; color: var(--t3); }
+.sidebar .spacer { flex: 1; min-height: 12px; }
+.status { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--inset); color: var(--t2); font-size: 12px; text-align: left; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; box-shadow: 0 0 8px var(--ok); }
 body[data-status="running"] .status .dot { animation: pulse 1.6s ease-in-out infinite; }
-body[data-status="paused"] .status .dot { background: var(--warn); color: var(--warn); }
-body[data-status="catching"] .status .dot { background: var(--cyan); color: var(--cyan); animation: pulse .8s ease-in-out infinite; }
+body[data-status="paused"] .status .dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+body[data-status="catching"] .status .dot { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse .8s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 
-main { position: relative; min-width: 0; overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 10px; padding: 0 4px 0 6px; pointer-events: auto; min-width: 0; }
+.tb-group { display: flex; border-radius: 99px; padding: 2px; }
+.tb-btn { width: 30px; height: 28px; border: 0; border-radius: 99px; background: none; display: grid; place-items: center; color: var(--t2); }
+.tb-btn:hover { background: var(--inset); color: var(--t1); }
+.tb-btn[aria-disabled="true"] { opacity: .35; }
+.tb-btn svg { width: 15px; height: 15px; }
+.tb-title { min-width: 0; }
+.tb-title h1 { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.tb-title p { font-size: 11px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-spacer { flex: 1; }
+[data-for] { display: none !important; }
+body[data-screen="network"] [data-for="network"], body[data-screen="opps"] [data-for="opps"], body[data-screen="posts"] [data-for="posts"] { display: inline-flex !important; }
+.search { display: flex; align-items: center; gap: 6px; width: 200px; height: 30px; padding: 0 10px; border-radius: 99px; border: .5px solid var(--line); color: var(--t3); font-size: 13px; text-align: left; }
+.search svg { width: 14px; height: 14px; flex: none; }
+.search kbd { margin-left: auto; font: 12px var(--font); color: var(--t3); }
+
+main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .screen { display: none; height: 100%; }
-.screen.on { display: block; animation: rise .5s var(--ease); }
-@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.99); } }
-.sheet { height: 100%; overflow-y: auto; padding: 28px 30px 40px; }
-.sheet-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.sheet-head h1 { font-size: 26px; }
-.sub { color: var(--t3); font-size: 13.5px; margin-top: 4px; }
-.grid { display: grid; gap: 14px; }
-.cols-4 { grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); }
-.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); }
-.card { position: relative; padding: 18px; border-radius: var(--r); background: var(--glass-thin); border: 1px solid var(--line); transition: transform .35s var(--spring), border-color .2s; }
-.card:hover { border-color: var(--line-strong); }
-.card h3 { font-size: 15px; margin-bottom: 6px; }
-.metric b { display: block; font: 600 30px "Space Grotesk", sans-serif; margin-top: 4px; background: linear-gradient(135deg,#fff,#c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.metric span { color: var(--t3); font-size: 12.5px; }
-.section-title { font: 600 14px "Space Grotesk", sans-serif; color: var(--t2); margin: 26px 0 12px; }
-.list { display: flex; flex-direction: column; gap: 8px; }
-.row { display: flex; align-items: center; gap: 12px; }
-.item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--inset); border: 1px solid var(--line); }
+.screen.on { display: block; animation: rise .45s var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+.sheet { height: 100%; overflow-y: auto; padding: 22px 24px 32px; background: rgba(18,13,40,.58); }
+.greeting { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+.sub { color: var(--t3); font-size: 13px; }
+.grid { display: grid; gap: 12px; }
+.cols-4 { grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); }
+.cols-2 { grid-template-columns: repeat(auto-fit, minmax(330px,1fr)); }
+.card { position: relative; padding: 16px; border-radius: 12px; background: rgba(255,255,255,.05); border: .5px solid var(--line); }
+.card h3 { font-size: 13px; margin-bottom: 6px; }
+.metric b { display: block; font: 700 28px var(--font-display); margin-top: 2px; background: linear-gradient(135deg,#fff,#c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.metric span { color: var(--t3); font-size: 12px; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--t2); margin: 22px 0 10px; }
+.list { display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--inset); border: .5px solid var(--line); }
 .item .grow { flex: 1; min-width: 0; }
-.muted { color: var(--t3); font-size: 12.5px; }
-.avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 12.5px; flex: none; background: var(--accent-soft); color: var(--accent-text); border: 1px solid rgba(167,139,250,.4); }
-.avatar.lg { width: 56px; height: 56px; font-size: 18px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--inset); color: var(--t2); white-space: nowrap; }
-button.chip:hover { border-color: var(--line-strong); color: var(--t1); }
-button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); border-color: rgba(167,139,250,.5); }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 11px; border: 1px solid var(--line); background: var(--inset); font-weight: 500; font-size: 13px; transition: transform .2s var(--spring), background .2s, border-color .2s; }
-.btn:hover { border-color: var(--line-strong); background: var(--sel); }
-.btn:active { transform: scale(.97); }
-.btn.primary { background: var(--accent); border-color: transparent; color: #fff; box-shadow: 0 6px 24px rgba(139,92,246,.4); }
-.btn.ghost { background: transparent; border-color: transparent; color: var(--t2); }
-.badge { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
-.badge.ok { background: rgba(74,222,128,.16); color: #bbf7d0; }
-.badge.warn { background: rgba(251,191,36,.16); color: #fde68a; }
+.muted { color: var(--t3); font-size: 12px; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 12px; flex: none; background: linear-gradient(135deg, rgba(139,92,246,.6), rgba(34,211,238,.5)); color: #fff; }
+.avatar.lg { width: 52px; height: 52px; font-size: 17px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 2px 8px; border-radius: 6px; border: .5px solid var(--line); background: var(--inset); color: var(--t2); white-space: nowrap; }
+.chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 8px; border: .5px solid var(--line-strong); background: rgba(255,255,255,.10); font-weight: 500; font-size: 13px; box-shadow: inset 0 .5px 0 rgba(255,255,255,.15); }
+.btn:active { filter: brightness(1.25); }
+.btn.primary { background: var(--accent-solid); border-color: rgba(255,255,255,.2); color: #fff; }
+.btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--t2); }
+.badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
+.badge.ok { background: rgba(50,215,75,.16); color: #b6f2c1; }
+.badge.warn { background: rgba(255,214,10,.16); color: #ffeaa0; }
 .badge.dim { background: var(--inset); color: var(--t3); }
-textarea { width: 100%; resize: vertical; min-height: 92px; padding: 12px 14px; border-radius: 13px; border: 1px solid rgba(167,139,250,.4); background: rgba(139,92,246,.10); line-height: 1.55; font-size: 13.5px; }
-textarea:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(167,139,250,.25); }
+textarea { width: 100%; resize: vertical; min-height: 88px; padding: 10px 12px; border-radius: 8px; border: .5px solid var(--line-strong); background: rgba(0,0,0,.25); line-height: 1.5; font-size: 13px; }
+textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(139,92,246,.55); }
 
-/* Network screen overlays */
-.network-screen.on { display: block; }
-.net-ui { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
-.toolbar { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 18px; flex-wrap: wrap; align-self: flex-start; max-width: 100%; }
-.toolbar h1 { font-size: 18px; margin-right: 6px; }
-.legend { display: flex; gap: 12px; font-size: 12px; color: var(--t3); }
+/* Segmented control */
+.seg { display: inline-flex; padding: 2px; border-radius: 99px; gap: 1px; }
+.seg button { border: 0; background: transparent; height: 26px; padding: 0 12px; border-radius: 99px; color: var(--t2); font-size: 12.5px; white-space: nowrap; }
+.seg button:hover { color: var(--t1); }
+.seg button[aria-pressed="true"] { background: rgba(255,255,255,.18); color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,.25), inset 0 .5px 0 rgba(255,255,255,.2); }
+
+/* Network overlays */
+.net-ui { position: absolute; inset: 0; pointer-events: none; }
+.legend { position: absolute; left: 4px; bottom: 4px; display: flex; gap: 12px; padding: 7px 12px; border-radius: 99px; font-size: 11.5px; color: var(--t2); }
 .legend span { display: flex; align-items: center; gap: 6px; }
-.legend i { width: 9px; height: 9px; border-radius: 50%; }
-.hint { align-self: center; display: flex; gap: 14px; padding: 8px 16px; border-radius: 99px; font-size: 12.5px; color: var(--t2); flex-wrap: wrap; justify-content: center; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; }
+.hint { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); display: flex; gap: 14px; padding: 7px 14px; border-radius: 99px; font-size: 12px; color: var(--t2); white-space: nowrap; }
 .hint.fly { border-color: rgba(34,211,238,.5); box-shadow: 0 0 30px rgba(34,211,238,.25); }
+.hint kbd { font: 11px var(--font); padding: 0 5px; border-radius: 4px; border: .5px solid var(--line-strong); }
 
-/* Person panel */
-#person { position: fixed; z-index: 3; top: 16px; right: 16px; bottom: 16px; width: 380px; max-width: calc(100vw - 32px); overflow-y: auto; padding: 22px;
-  transform: translateX(calc(100% + 40px)); transition: transform .6s var(--spring); }
+/* Inspector */
+#person { position: absolute; z-index: 5; top: 60px; right: 8px; bottom: 8px; width: 340px; max-width: calc(100% - 16px); overflow-y: auto; padding: 20px;
+  transform: translateX(calc(100% + 30px)); transition: transform .55s var(--spring); }
 #person.open { transform: none; }
-.panel-close { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line); background: var(--inset); display: grid; place-items: center; z-index: 1; }
-.timeline { position: relative; display: flex; flex-direction: column; gap: 14px; padding-left: 22px; }
-.timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.panel-close { position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: var(--inset); display: grid; place-items: center; z-index: 1; color: var(--t2); }
+.timeline { position: relative; display: flex; flex-direction: column; gap: 12px; padding-left: 20px; }
+.timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
 .tl { position: relative; }
-.tl::before { content: ""; position: absolute; left: -21px; top: 5px; width: 11px; height: 11px; border-radius: 50%; background: var(--bg); border: 2px solid var(--c, var(--dim)); box-shadow: 0 0 10px var(--c, transparent); }
-.tl b { font-weight: 500; font-size: 13px; }
-.panel-section { margin-top: 22px; }
-.panel-section h3 { font-size: 13px; color: var(--t3); font-family: Inter, sans-serif; font-weight: 500; margin-bottom: 10px; }
-.followup { padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(34,211,238,.35); background: rgba(34,211,238,.08); font-size: 13px; }
+.tl::before { content: ""; position: absolute; left: -19px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg); border: 2px solid var(--c, var(--dim)); box-shadow: 0 0 8px var(--c, transparent); }
+.tl b { font-weight: 500; }
+.panel-section { margin-top: 20px; }
+.panel-section h3 { font: 600 11px var(--font); color: var(--t3); margin-bottom: 8px; }
+.followup { padding: 10px 12px; border-radius: 10px; border: .5px solid rgba(34,211,238,.4); background: rgba(34,211,238,.08); }
 
 /* Opportunities */
-.opp { display: flex; flex-direction: column; gap: 12px; }
+.opp { display: flex; flex-direction: column; gap: 10px; }
 .opp.dismissed { display: none; }
-.post { font-size: 13.5px; line-height: 1.6; color: var(--t2); padding: 12px 14px; border-radius: 13px; background: var(--inset); border: 1px solid var(--line); }
-.why { font-size: 13px; color: var(--t2); }
-.why strong { color: var(--t1); font-weight: 500; }
+.post { line-height: 1.55; color: var(--t2); padding: 10px 12px; border-radius: 10px; background: var(--inset); border: .5px solid var(--line); }
+.why { color: var(--t2); }
+.why strong { color: var(--t1); font-weight: 600; }
 .opp-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-.score { font: 600 13px "Space Grotesk", sans-serif; padding: 4px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); margin-left: auto; }
+.score { font-weight: 600; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); margin-left: auto; }
 
 /* Projects */
-.drop { display: grid; place-items: center; text-align: center; gap: 6px; min-height: 160px; border: 1.5px dashed var(--line-strong); border-radius: var(--r); color: var(--t3); background: transparent; transition: border-color .2s, background .2s, transform .3s var(--spring); }
-.drop:hover, .drop.over { border-color: var(--cyan); background: rgba(34,211,238,.06); color: var(--t1); transform: scale(1.01); }
-.q { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.3); font-size: 13px; }
+.drop { display: grid; place-items: center; text-align: center; min-height: 150px; border: 1.5px dashed var(--line-strong); border-radius: 12px; color: var(--t3); background: transparent; transition: border-color .2s, background .2s, transform .3s var(--spring); }
+.drop:hover, .drop.over { border-color: var(--accent-hi); background: rgba(139,92,246,.08); color: var(--t1); transform: scale(1.01); }
+.q { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(255,214,10,.08); border: .5px solid rgba(255,214,10,.3); }
 .q .grow { flex: 1; }
 .scan { height: 3px; border-radius: 3px; background: var(--inset); overflow: hidden; margin-top: 10px; }
-.scan i { display: block; height: 100%; width: 40%; background: var(--accent); animation: scan 1.8s ease-in-out infinite; }
+.scan i { display: block; height: 100%; width: 40%; background: linear-gradient(90deg,#8b5cf6,#22d3ee); animation: scan 1.8s ease-in-out infinite; }
 @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 
 /* Posts */
-.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--inset); border: 1px solid var(--line); }
-.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 9px; color: var(--t2); font-size: 13px; }
-.seg button[aria-pressed="true"] { background: var(--sel); color: var(--t1); }
-.preview { background: #fff; color: #1d2226; border-radius: 14px; padding: 16px; font-size: 14px; line-height: 1.5; box-shadow: 0 20px 50px rgba(0,0,0,.4); }
+.preview { background: #fff; color: #1d2226; border-radius: 12px; padding: 14px; font-size: 14px; line-height: 1.5; box-shadow: 0 20px 50px rgba(0,0,0,.4); user-select: text; }
 .preview.x { background: #000; color: #e7e9ea; border: 1px solid #2f3336; }
 .preview .pv-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
 .preview .pv-av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg,#8b5cf6,#22d3ee); }
-.preview .pv-name { font-weight: 600; font-size: 14px; }
+.preview .pv-name { font-weight: 600; }
 .preview .pv-meta { font-size: 12px; opacity: .6; }
 .preview p { white-space: pre-wrap; }
 .over-limit { color: var(--danger); }
 
-/* Privacy */
-.switch { position: relative; width: 42px; height: 24px; flex: none; }
-.switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
-.switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--inset); border: 1px solid var(--line-strong); transition: background .25s; pointer-events: none; }
-.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .35s var(--spring); }
-.switch input:checked + span { background: var(--accent); border-color: transparent; }
-.switch input:checked + span::after { transform: translateX(18px); }
-.switch input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
-table.log { width: 100%; border-collapse: collapse; font-size: 13px; }
-table.log th { text-align: left; font-weight: 500; color: var(--t3); padding: 8px 10px; border-bottom: 1px solid var(--line); }
-table.log td { padding: 10px; border-bottom: 1px solid var(--line); color: var(--t2); }
+/* macOS switch */
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; }
+.switch span { position: absolute; inset: 0; border-radius: 99px; background: rgba(255,255,255,.18); transition: background .25s; pointer-events: none; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .35s var(--spring); }
+.switch input:checked + span { background: var(--accent-solid); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 3px solid rgba(139,92,246,.6); outline-offset: 1px; }
+table.log { width: 100%; border-collapse: collapse; }
+table.log th { text-align: left; font-weight: 600; font-size: 11px; color: var(--t3); padding: 6px 10px; border-bottom: .5px solid var(--line); }
+table.log td { padding: 8px 10px; color: var(--t2); }
+table.log tr:nth-child(even) td { background: rgba(255,255,255,.03); }
 
-/* Command palette */
-#palette { position: fixed; inset: 0; z-index: 10; display: none; place-items: start center; padding-top: 14vh; background: rgba(5,3,15,.45); }
-#palette.open { display: grid; }
-.pal { width: min(560px, calc(100vw - 32px)); padding: 10px; animation: pop .35s var(--spring); }
-@keyframes pop { from { opacity: 0; transform: scale(.94) translateY(-8px); } }
-.pal input { width: 100%; padding: 12px 14px; border: 0; background: transparent; font-size: 16px; outline: none; border-bottom: 1px solid var(--line); }
-.pal ul { list-style: none; max-height: 320px; overflow-y: auto; padding: 6px 0 0; }
-.pal li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--t2); cursor: pointer; }
-.pal li[aria-selected="true"] { background: var(--sel); color: var(--t1); }
+/* Spotlight */
+#palette { position: fixed; inset: 0; z-index: 30; display: none; }
+#palette.open { display: block; }
+.pal { position: absolute; top: 20vh; left: 50%; transform: translateX(-50%); width: min(640px, calc(100vw - 32px)); border-radius: 22px; overflow: hidden; animation: pop .3s var(--spring); }
+@keyframes pop { from { opacity: 0; transform: translateX(-50%) scale(.95); } }
+.pal-input { display: flex; align-items: center; gap: 12px; padding: 0 18px; height: 56px; }
+.pal-input svg { width: 22px; height: 22px; color: var(--t3); flex: none; }
+.pal-input input { flex: 1; border: 0; background: transparent; font-size: 22px; font-weight: 300; outline: none; }
+.pal ul { list-style: none; max-height: 340px; overflow-y: auto; padding: 6px; border-top: .5px solid var(--line); }
+.pal ul:empty { display: none; }
+.pal li { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; color: var(--t1); }
+.pal li .avatar { width: 22px; height: 22px; font-size: 9px; }
 .pal li .muted { margin-left: auto; }
+.pal li[aria-selected="true"] { background: var(--accent-solid); }
+.pal li[aria-selected="true"] .muted { color: rgba(255,255,255,.85); }
 
-#toast { position: fixed; z-index: 11; left: 50%; bottom: 28px; transform: translate(-50%, calc(100% + 60px)); opacity: 0; padding: 11px 18px; border-radius: 14px; font-size: 13.5px; transition: transform .5s var(--spring), opacity .3s; display: flex; gap: 12px; align-items: center; }
-#toast.show { transform: translate(-50%, 0); opacity: 1; }
-#toast button { border: 0; background: none; color: var(--cyan); font-weight: 600; }
+/* Menus (menu bar and right-click) */
+#menu { position: fixed; z-index: 40; min-width: 220px; padding: 5px; border-radius: 11px; }
+#menu[hidden] { display: none; }
+#menu button { display: flex; align-items: center; width: 100%; height: 24px; padding: 0 10px 0 22px; border: 0; border-radius: 6px; background: none; text-align: left; font-size: 13px; position: relative; }
+#menu button:not(:disabled):hover { background: var(--accent-solid); }
+#menu button:disabled { color: var(--t3); }
+#menu button .k { margin-left: auto; padding-left: 24px; color: var(--t3); }
+#menu button:not(:disabled):hover .k { color: rgba(255,255,255,.85); }
+#menu button .check { position: absolute; left: 7px; }
+#menu .sep { height: 1px; margin: 5px 10px; background: var(--line); }
+
+/* Notification banner */
+#toast { position: fixed; z-index: 35; top: 36px; right: 12px; width: 344px; max-width: calc(100vw - 24px); padding: 12px 14px; border-radius: 18px; display: flex; gap: 10px; align-items: flex-start;
+  transform: translateX(calc(100% + 30px)); transition: transform .5s var(--spring); }
+#toast.show { transform: none; }
+#toast .app-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg,#8b5cf6,#22d3ee); flex: none; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+#toast .tx { flex: 1; min-width: 0; }
+#toast b { font-weight: 600; display: block; }
+#toast .when { position: absolute; top: 12px; right: 14px; font-size: 11px; color: var(--t3); }
+#toast button { margin-top: 6px; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-@media (max-width: 820px) {
-  .app { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr) auto; padding: 10px; gap: 10px; }
-  .sidebar { order: 2; flex-direction: row; overflow-x: auto; padding: 8px; border-radius: 18px; }
-  .sidebar .brand, .sidebar .spacer, .kbd-hint, .nav-btn .label { display: none; }
-  .status { width: auto; margin: 0; }
-  .nav-btn { width: auto; }
-  .sheet { padding: 20px 16px 32px; }
-  #person { top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; max-height: 72vh; transform: translateY(calc(100% + 30px)); }
-  .legend { display: none; }
+@media (max-width: 900px) {
+  .menubar { display: none; }
+  .window, .window.zoomed { inset: 0; border-radius: 0; }
+  #toast { top: 12px; }
+  .app { grid-template-columns: 56px minmax(0,1fr); }
+  .sidebar { padding: 12px 6px; }
+  .traffic { flex-direction: column; align-items: center; padding: 2px 0 10px; }
+  .sb-head, .nav-btn .label, .nav-btn .count, .status span:last-child { display: none; }
+  .nav-btn { justify-content: center; padding: 0; }
+  .status { justify-content: center; padding: 0; }
+  .search { width: 34px; padding: 0; justify-content: center; }
+  .search span, .search kbd, .tb-title p, .legend { display: none; }
+  .sheet { padding: 18px 14px 28px; }
+  .hint { max-width: calc(100% - 8px); overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: .01s !important; }
@@ -220,151 +281,170 @@ table.log td { padding: 10px; border-bottom: 1px solid var(--line); color: var(-
 </style>
 </head>
 <body data-screen="network" data-status="running">
-<h2 class="sr-only">Design prototype of a local-first networking app with a 3D people network and glass interface. All data is sample data.</h2>
+<h2 class="sr-only">Design prototype of a macOS networking app with a 3D people network and glass interface. All data is sample data.</h2>
 
-<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
-<div id="scene" aria-label="3D network of people. Use the command palette or the person list to open a person." role="img"></div>
+<!-- macOS menu bar -->
+<div class="menubar" role="menubar" aria-label="Menu bar">
+  <button class="mb-item mb-app" data-menu="app">Networking Agent</button>
+  <button class="mb-item" data-menu="file">File</button>
+  <button class="mb-item" data-menu="edit">Edit</button>
+  <button class="mb-item" data-menu="view">View</button>
+  <button class="mb-item" data-menu="window">Window</button>
+  <button class="mb-item" data-menu="help">Help</button>
+  <div class="mb-spacer"></div>
+  <button class="mb-item" data-menu="agent" aria-label="Agent status menu"><span class="mb-dot"></span></button>
+  <span class="mb-item" id="clock" aria-hidden="true"></span>
+</div>
 
-<div class="app">
-  <nav class="sidebar glass lit" aria-label="Main">
-    <div class="brand"><div class="brand-mark"></div>Networking agent</div>
-    <button class="nav-btn" data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span class="label">Home</span></button>
-    <button class="nav-btn" data-go="opps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span class="label">Opportunities</span><span class="count" id="opp-count">4</span></button>
-    <button class="nav-btn" data-go="posts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg><span class="label">Posts</span><span class="count">2</span></button>
-    <button class="nav-btn" data-go="network"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="18" r="2"/><path d="M10 10L6.5 7.5M14 10l3.5-2.5M10 14l-3 3.5M14 14l2.6 2.6"/></svg><span class="label">Network</span></button>
-    <button class="nav-btn" data-go="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="label">Projects</span></button>
-    <button class="nav-btn" data-go="privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><span class="label">Privacy</span></button>
-    <div class="spacer"></div>
-    <button class="kbd-hint" id="open-palette">Jump to… <kbd>⌘K</kbd></button>
-    <button class="status" id="status" title="Click to preview agent states"><span class="dot"></span><span id="status-text">Agent running</span></button>
-  </nav>
+<div class="window" id="win">
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div id="scene" role="img" aria-label="3D network of people. Use Spotlight search (Command K) to open a person."></div>
 
-  <main>
-    <!-- HOME -->
-    <section class="screen" data-screen="home">
-      <div class="sheet glass lit">
-        <div class="sheet-head">
-          <div><h1>Good evening</h1><p class="sub">Your weekly review · Nov 1 – Nov 7. Nothing is sent without your approval.</p></div>
-          <button class="btn primary" data-go="opps">Review opportunities</button>
-        </div>
-        <div class="grid cols-4">
-          <div class="card metric lit"><span>New opportunities</span><b>8</b></div>
-          <div class="card metric lit"><span>Follow-ups due</span><b>3</b></div>
-          <div class="card metric lit"><span>Post ideas</span><b>2</b></div>
-          <div class="card metric lit"><span>Questions for you</span><b>2</b></div>
-        </div>
-        <div class="grid cols-2" style="margin-top:14px">
-          <div>
-            <div class="section-title">Follow-ups due</div>
-            <div class="list">
-              <div class="item"><div class="avatar">PM</div><div class="grow"><b>Priya Menon</b><div class="muted">Send the eval notebook she asked about</div></div><span class="badge warn">Nov 9</span></div>
-              <div class="item"><div class="avatar">AR</div><div class="grow"><b>Alex Romero</b><div class="muted">Share HackMap v2 demo</div></div><span class="badge dim">Nov 12</span></div>
-              <div class="item"><div class="avatar">MT</div><div class="grow"><b>Mei Tanaka</b><div class="muted">Your PR to graphkit was merged. Say thanks.</div></div><span class="badge dim">Nov 14</span></div>
+  <div class="app">
+    <nav class="sidebar glass lit" aria-label="Sidebar">
+      <div class="traffic">
+        <button class="close" id="tl-close" aria-label="Close window">×</button>
+        <button class="min" id="tl-min" aria-label="Minimize window">−</button>
+        <button class="zoom" id="tl-zoom" aria-label="Zoom window">+</button>
+      </div>
+      <div class="sb-head">Agent</div>
+      <button class="nav-btn" data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span class="label">Home</span></button>
+      <button class="nav-btn" data-go="opps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span class="label">Opportunities</span><span class="count" id="opp-count">4</span></button>
+      <button class="nav-btn" data-go="posts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg><span class="label">Posts</span><span class="count">2</span></button>
+      <div class="sb-head">Relationships</div>
+      <button class="nav-btn" data-go="network"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="18" r="2"/><path d="M10 10L6.5 7.5M14 10l3.5-2.5M10 14l-3 3.5M14 14l2.6 2.6"/></svg><span class="label">Network</span><span class="count" id="people-count"></span></button>
+      <div class="sb-head">Library</div>
+      <button class="nav-btn" data-go="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="label">Projects</span><span class="count">3</span></button>
+      <button class="nav-btn" data-go="privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><span class="label">Privacy</span></button>
+      <div class="spacer"></div>
+      <button class="status" id="status" title="Click to preview agent states"><span class="dot"></span><span id="status-text">Agent running</span></button>
+    </nav>
+
+    <header class="toolbar" id="toolbar">
+      <div class="tb-group glass thin">
+        <button class="tb-btn" id="back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="tb-btn" id="fwd" aria-label="Forward"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <div class="tb-title"><h1 id="tb-title">Network</h1><p id="tb-sub"></p></div>
+      <div class="tb-spacer"></div>
+      <div class="seg glass thin" data-for="network" id="net-filter" role="group" aria-label="Filter by project"></div>
+      <div class="seg glass thin" data-for="opps" id="opp-filter" role="group" aria-label="Filter opportunities"></div>
+      <div class="seg glass thin" data-for="posts" role="group" aria-label="Platform"><button aria-pressed="true" data-platform="li">LinkedIn</button><button aria-pressed="false" data-platform="x">X</button></div>
+      <button class="search glass thin" id="open-palette" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Search</span><kbd>⌘K</kbd></button>
+      <div class="tb-group glass thin"><button class="tb-btn" data-go="projects" aria-label="Add project folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg></button></div>
+    </header>
+
+    <main>
+      <!-- HOME -->
+      <section class="screen" data-screen="home">
+        <div class="sheet glass lit">
+          <div class="row" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:18px">
+            <div><h2 class="greeting">Good evening</h2><p class="sub">Nothing is sent without your approval.</p></div>
+            <button class="btn primary" data-go="opps">Review Opportunities</button>
+          </div>
+          <div class="grid cols-4">
+            <div class="card metric lit"><span>New opportunities</span><b>8</b></div>
+            <div class="card metric lit"><span>Follow-ups due</span><b>3</b></div>
+            <div class="card metric lit"><span>Post ideas</span><b>2</b></div>
+            <div class="card metric lit"><span>Questions for you</span><b>2</b></div>
+          </div>
+          <div class="grid cols-2" style="margin-top:4px">
+            <div>
+              <div class="section-title">Follow-ups due</div>
+              <div class="list">
+                <div class="item"><div class="avatar">PM</div><div class="grow"><b>Priya Menon</b><div class="muted">Send the eval notebook she asked about</div></div><span class="badge warn">Nov 9</span></div>
+                <div class="item"><div class="avatar">AR</div><div class="grow"><b>Alex Romero</b><div class="muted">Share HackMap v2 demo</div></div><span class="badge dim">Nov 12</span></div>
+                <div class="item"><div class="avatar">MT</div><div class="grow"><b>Mei Tanaka</b><div class="muted">Your PR to graphkit was merged. Say thanks.</div></div><span class="badge dim">Nov 14</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="section-title">What changed in your projects</div>
+              <div class="list">
+                <div class="item"><div class="grow"><b>CubeSync</b><div class="muted">New eval results: 0 false merges on 4,112 contacts</div></div><button class="btn" data-go="posts">Draft Post</button></div>
+                <div class="item"><div class="grow"><b>Graph thesis</b><div class="muted">Chapter 3 added. Who wrote the benchmark code?</div></div><button class="btn" data-go="projects">Answer</button></div>
+                <div class="item"><div class="grow"><b>HackMap</b><div class="muted">Small changes. Not worth a post yet.</div></div><span class="badge dim">Skipped</span></div>
+              </div>
             </div>
           </div>
-          <div>
-            <div class="section-title">What changed in your projects</div>
-            <div class="list">
-              <div class="item"><div class="grow"><b>CubeSync</b><div class="muted">New eval results: 0 false merges on 4,112 contacts</div></div><button class="btn" data-go="posts">Draft post</button></div>
-              <div class="item"><div class="grow"><b>Graph thesis</b><div class="muted">Chapter 3 added. Who wrote the benchmark code?</div></div><button class="btn" data-go="projects">Answer</button></div>
-              <div class="item"><div class="grow"><b>HackMap</b><div class="muted">Small changes. Not worth a post yet.</div></div><span class="badge dim">Skipped</span></div>
-            </div>
-          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- OPPORTUNITIES -->
-    <section class="screen" data-screen="opps">
-      <div class="sheet glass lit">
-        <div class="sheet-head">
-          <div><h1>Opportunities</h1><p class="sub">Ranked by how useful your work is to the conversation, not just topic overlap.</p></div>
-          <div class="chips" id="opp-filter"></div>
-        </div>
-        <div class="grid cols-2" id="opp-list"></div>
-      </div>
-    </section>
+      <!-- OPPORTUNITIES -->
+      <section class="screen" data-screen="opps">
+        <div class="sheet glass lit"><div class="grid cols-2" id="opp-list"></div></div>
+      </section>
 
-    <!-- POSTS -->
-    <section class="screen" data-screen="posts">
-      <div class="sheet glass lit">
-        <div class="sheet-head">
-          <div><h1>Post drafts</h1><p class="sub">Drafted from meaningful project changes. You edit and publish.</p></div>
-          <div class="seg" role="group" aria-label="Platform"><button aria-pressed="true" data-platform="li">LinkedIn</button><button aria-pressed="false" data-platform="x">X</button></div>
-        </div>
-        <div class="grid cols-2">
-          <div class="card">
-            <div class="row" style="margin-bottom:10px"><h3 style="margin:0">CubeSync eval milestone</h3><span class="badge" style="margin-left:auto">From CubeSync</span></div>
-            <textarea id="post-text" rows="9" aria-label="Post draft">We stopped merging contacts by name.
+      <!-- POSTS -->
+      <section class="screen" data-screen="posts">
+        <div class="sheet glass lit">
+          <div class="grid cols-2">
+            <div class="card">
+              <div class="row" style="margin-bottom:10px"><h3 style="margin:0">CubeSync eval milestone</h3><span class="badge" style="margin-left:auto">From CubeSync</span></div>
+              <textarea id="post-text" rows="10" aria-label="Post draft">We stopped merging contacts by name.
 
 CubeSync now keys identities on stable platform IDs. On 4,112 real contacts across Gmail and LinkedIn exports, that took false merges from 37 to 0.
 
 The trade-off: a few duplicates now need a manual confirm. Worth it.
 
 Notebook and method in the repo if you work on identity resolution.</textarea>
-            <div class="row" style="margin-top:10px"><div class="chips"><span class="chip">eval/results.csv</span><span class="chip">README.md</span></div><span class="muted" id="post-count" style="margin-left:auto"></span></div>
-            <div class="opp-actions" style="margin-top:14px"><button class="btn ghost">Not worth posting</button><button class="btn" data-toast="Copied. Paste it into LinkedIn to publish.">Copy</button><button class="btn primary" data-toast="Approved. It won't publish until you press Publish.">Approve</button></div>
+              <div class="row" style="margin-top:10px"><div class="chips"><span class="chip">eval/results.csv</span><span class="chip">README.md</span></div><span class="muted" id="post-count" style="margin-left:auto"></span></div>
+              <div class="opp-actions" style="margin-top:14px"><button class="btn ghost">Not Worth Posting</button><button class="btn" data-note="Copied. Paste it into LinkedIn to publish.">Copy</button><button class="btn primary" data-note="Post approved. It won't publish until you press Publish.">Approve</button></div>
+            </div>
+            <div>
+              <div class="section-title" style="margin-top:0">Preview</div>
+              <div class="preview" id="preview"><div class="pv-head"><div class="pv-av"></div><div><div class="pv-name">You</div><div class="pv-meta" id="pv-meta">CS student · now</div></div></div><p id="pv-text"></p></div>
+            </div>
           </div>
-          <div>
-            <div class="section-title" style="margin-top:0">Preview</div>
-            <div class="preview" id="preview"><div class="pv-head"><div class="pv-av"></div><div><div class="pv-name">You</div><div class="pv-meta" id="pv-meta">CS student · now</div></div></div><p id="pv-text"></p></div>
+        </div>
+      </section>
+
+      <!-- NETWORK -->
+      <section class="screen network-screen" data-screen="network">
+        <div class="net-ui">
+          <div class="legend glass thin"><span><i style="background:var(--dim)"></i>Proposed</span><span><i style="background:var(--violet)"></i>Interacted</span><span><i style="background:var(--cyan);box-shadow:0 0 8px var(--cyan)"></i>Connected</span></div>
+          <div class="hint glass thin" id="hint"></div>
+        </div>
+      </section>
+
+      <!-- PROJECTS -->
+      <section class="screen" data-screen="projects">
+        <div class="sheet glass lit"><div class="grid cols-2" id="project-list"></div></div>
+      </section>
+
+      <!-- PRIVACY -->
+      <section class="screen" data-screen="privacy">
+        <div class="sheet glass lit">
+          <div class="list" id="perm-list"></div>
+          <div class="section-title">What left this Mac</div>
+          <div class="card" style="padding:4px; overflow-x:auto">
+            <table class="log">
+              <thead><tr><th>When</th><th>Folder</th><th>What was sent</th><th>To</th></tr></thead>
+              <tbody>
+                <tr><td>Today 16:42</td><td>CubeSync</td><td>3 excerpts from README.md, eval/results.csv</td><td>Model provider</td></tr>
+                <tr><td>Today 09:10</td><td>Graph thesis</td><td>Chapter 3 summary request</td><td>Model provider</td></tr>
+                <tr><td>Nov 5 21:03</td><td>HackMap</td><td>Changed files list (no contents)</td><td>Model provider</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
+  </div>
 
-    <!-- NETWORK -->
-    <section class="screen network-screen" data-screen="network">
-      <div class="net-ui">
-        <div class="toolbar glass lit">
-          <h1>Your network</h1>
-          <div class="chips" id="net-filter" role="group" aria-label="Filter by project"></div>
-          <div class="legend"><span><i style="background:var(--dim)"></i>Proposed</span><span><i style="background:var(--violet)"></i>Interacted</span><span><i style="background:var(--cyan);box-shadow:0 0 8px var(--cyan)"></i>Connected</span></div>
-        </div>
-        <div class="hint glass thin" id="hint"><span>Drag to orbit</span><span>Scroll to zoom</span><span>Click a person</span><span><kbd>F</kbd> free flight</span></div>
-      </div>
-    </section>
-
-    <!-- PROJECTS -->
-    <section class="screen" data-screen="projects">
-      <div class="sheet glass lit">
-        <div class="sheet-head">
-          <div><h1>Projects</h1><p class="sub">Each folder is added separately and has its own AI permission.</p></div>
-        </div>
-        <div class="grid cols-2" id="project-list"></div>
-      </div>
-    </section>
-
-    <!-- PRIVACY -->
-    <section class="screen" data-screen="privacy">
-      <div class="sheet glass lit">
-        <div class="sheet-head"><div><h1>Privacy</h1><p class="sub">Your database stays on this Mac. Selected excerpts go to the AI provider only for folders you allow.</p></div></div>
-        <div class="list" id="perm-list"></div>
-        <div class="section-title">What left this Mac</div>
-        <div class="card" style="padding:6px 8px; overflow-x:auto">
-          <table class="log">
-            <thead><tr><th>When</th><th>Folder</th><th>What was sent</th><th>To</th></tr></thead>
-            <tbody>
-              <tr><td>Today 16:42</td><td>CubeSync</td><td>3 excerpts from README.md, eval/results.csv</td><td>Model provider</td></tr>
-              <tr><td>Today 09:10</td><td>Graph thesis</td><td>Chapter 3 summary request</td><td>Model provider</td></tr>
-              <tr><td>Nov 5 21:03</td><td>HackMap</td><td>Changed files list (no contents)</td><td>Model provider</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  </main>
+  <aside id="person" class="glass thick lit" aria-label="Person inspector" aria-hidden="true">
+    <button class="panel-close" id="person-close" aria-label="Close inspector"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div id="person-body"></div>
+  </aside>
 </div>
 
-<aside id="person" class="glass thick lit" aria-label="Person details" aria-hidden="true">
-  <button class="panel-close" id="person-close" aria-label="Close person panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-  <div id="person-body"></div>
-</aside>
-
-<div id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
-  <div class="pal glass thick"><input id="pal-input" placeholder="Jump to a screen or person" autocomplete="off" aria-label="Search"><ul id="pal-list" role="listbox"></ul></div>
+<div id="palette" role="dialog" aria-modal="true" aria-label="Spotlight search">
+  <div class="pal glass thick">
+    <div class="pal-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="pal-input" placeholder="Search people and screens" autocomplete="off" aria-label="Search"></div>
+    <ul id="pal-list" role="listbox"></ul>
+  </div>
 </div>
-<div id="toast" class="glass thick" role="status" aria-live="polite"><span id="toast-text"></span><button id="toast-undo" hidden>Undo</button></div>
+<div id="menu" class="glass thick" role="menu" hidden></div>
+<div id="toast" class="glass thick" role="status" aria-live="polite"><div class="app-icon"></div><div class="tx"><b id="toast-title"></b><span id="toast-text"></span><div><button class="btn" id="toast-undo" hidden>Undo</button></div></div><span class="when">now</span></div>
 
 <script type="module">
 /* ---------------- Sample data (design prototype only) ---------------- */
@@ -374,9 +454,8 @@ const PROJECTS = {
   hackmap:  { name: 'HackMap', summary: 'Matches hackathon participants into balanced teams.', contribution: 'Built the matching algorithm and the web UI.', result: 'Used by 140 people at one hackathon.', evidence: ['app/match.ts', 'DEMO.md'], question: 'Is the 140-user number from the organisers or your own logs?', scanning: false },
 };
 
-const ME = { id: 'me', name: 'You', role: 'CS student', status: 'you', projects: Object.keys(PROJECTS) };
 const PEOPLE = [
-  ME,
+  { id: 'me', name: 'You', role: 'CS student', status: 'you', projects: Object.keys(PROJECTS) },
   { id: 'priya', name: 'Priya Menon', role: 'ML engineer', org: 'Lumen', status: 'connected', projects: ['cubesync'], profiles: ['LinkedIn', 'GitHub'],
     source: 'Her LinkedIn post asking how to deduplicate contacts without merging by name.',
     interests: [['Identity resolution', 'her post · your CubeSync README'], ['Local-first software', 'her profile · your project setup']],
@@ -420,9 +499,9 @@ const LINKS = PEOPLE.filter(p => p.id !== 'me').map(p => ({ source: 'me', target
 LINKS.push({ source: 'priya', target: 'omar', kind: 'confirmed', why: 'Same team at Lumen, per both profiles' });
 LINKS.push({ source: 'alex', target: 'lena', kind: 'confirmed', why: 'Connected on LinkedIn, per import' });
 
-const COLOR = { you: '#f5d0fe', connected: '#22d3ee', interacted: '#a78bfa', prospect: '#6b6694' };
+const COLOR = { you: '#ffffff', connected: '#5ee7f5', interacted: '#b4a2ff', prospect: '#8a86a3' };
 const EVENT = {
-  discovered: ['Discovered', '#6b6694'], draft: ['Draft waiting', '#fbbf24'], approved: ['Approved by you', '#a78bfa'],
+  discovered: ['Discovered', '#6b6694'], draft: ['Draft waiting', '#ffd60a'], approved: ['Approved by you', '#a78bfa'],
   sent: ['Sent', '#c4b5fd'], replied: ['Replied', '#f0abfc'], connected: ['Connected', '#22d3ee'],
 };
 
@@ -452,42 +531,110 @@ const byId = Object.fromEntries(PEOPLE.map(p => [p.id, p]));
 const initials = n => n.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const win = $('#win');
 
+// macOS-style notification banner.
 let toastTimer, toastUndo;
-function toast(text, undo) {
-  $('#toast-text').textContent = text;
+function notify(text, undo, title = 'Networking Agent') {
+  $('#toast-title').textContent = title; $('#toast-text').textContent = text;
   $('#toast-undo').hidden = !undo; toastUndo = undo;
   $('#toast').classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 3800);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 4500);
 }
 $('#toast-undo').onclick = () => { toastUndo?.(); $('#toast').classList.remove('show'); };
 
-// Cursor-following rim light on glass surfaces.
 document.addEventListener('pointermove', e => {
   const el = e.target.closest?.('.lit'); if (!el) return;
   const r = el.getBoundingClientRect();
   el.style.setProperty('--mx', (e.clientX - r.left) + 'px'); el.style.setProperty('--my', (e.clientY - r.top) + 'px');
 });
 
-/* ---------------- Navigation ---------------- */
-function go(screen) {
+function tick() { $('#clock').textContent = new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(/,/g, ''); }
+tick(); setInterval(tick, 20000);
+$('#people-count').textContent = PEOPLE.length - 1;
+
+/* ---------------- Window behaviour ---------------- */
+// Closing the window keeps the agent running in the menu bar, as the product spec describes.
+function hideWindow(minimized) {
+  win.classList.add('closed');
+  notify(minimized ? 'Minimized. Reopen it from the agent icon in the menu bar.' : 'The window is closed, but the agent keeps running in the menu bar.');
+}
+function showWindow() { win.classList.remove('closed'); }
+function toggleZoom() { win.classList.toggle('zoomed'); }
+$('#tl-close').onclick = () => hideWindow(false);
+$('#tl-min').onclick = () => hideWindow(true);
+$('#tl-zoom').onclick = toggleZoom;
+$('#toolbar').addEventListener('dblclick', e => { if (e.target === e.currentTarget || e.target.closest('.tb-title, .tb-spacer')) toggleZoom(); });
+
+/* ---------------- Navigation with history ---------------- */
+const SCREENS = [['home', 'Home'], ['opps', 'Opportunities'], ['posts', 'Posts'], ['network', 'Network'], ['projects', 'Projects'], ['privacy', 'Privacy']];
+const SUBTITLE = { home: 'Weekly review · Nov 1 – 7', opps: 'Ranked by how useful your work is, not just topic overlap', posts: 'Drafted from meaningful project changes',
+  network: `${PEOPLE.length - 1} people · drag to orbit, click to inspect`, projects: 'Each folder has its own AI permission', privacy: 'Your database stays on this Mac' };
+let hist = [], hi = -1;
+function go(screen, fromHistory) {
+  if (!fromHistory && hist[hi] !== screen) { hist = hist.slice(0, hi + 1); hist.push(screen); hi = hist.length - 1; }
   document.body.dataset.screen = screen;
   $$('.screen').forEach(s => s.classList.toggle('on', s.dataset.screen === screen));
   $$('.nav-btn').forEach(b => b.dataset.go === screen ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  $('#tb-title').textContent = SCREENS.find(s => s[0] === screen)[1]; $('#tb-sub').textContent = SUBTITLE[screen];
+  $('#back').setAttribute('aria-disabled', hi <= 0); $('#fwd').setAttribute('aria-disabled', hi >= hist.length - 1);
   if (screen !== 'network') closePerson();
   setFreeFlight(false);
 }
+const back = () => { if (hi > 0) go(hist[--hi], true); };
+const fwd = () => { if (hi < hist.length - 1) go(hist[++hi], true); };
+$('#back').onclick = back; $('#fwd').onclick = fwd;
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
-  const t = e.target.closest('[data-toast]'); if (t) toast(t.dataset.toast);
+  const t = e.target.closest('[data-note]'); if (t) notify(t.dataset.note);
 });
 
 const STATES = [['running', 'Agent running'], ['paused', 'Paused · Mac was asleep'], ['catching', 'Catching up · 3 changes']];
 let statusIx = 0;
-$('#status').onclick = () => {
-  statusIx = (statusIx + 1) % STATES.length;
-  document.body.dataset.status = STATES[statusIx][0]; $('#status-text').textContent = STATES[statusIx][1];
+function setStatus(i) { statusIx = i; document.body.dataset.status = STATES[i][0]; $('#status-text').textContent = STATES[i][1]; }
+$('#status').onclick = () => setStatus((statusIx + 1) % STATES.length);
+
+/* ---------------- Menus: menu bar and right-click ---------------- */
+let menuItems = [], menuAnchor = null;
+function openMenu(items, x, y, anchor) {
+  const m = $('#menu');
+  menuItems = items; menuAnchor?.classList.remove('open'); menuAnchor = anchor || null; anchor?.classList.add('open');
+  m.innerHTML = items.map((it, i) => it === '-' ? '<div class="sep" role="separator"></div>'
+    : `<button role="menuitem" data-mi="${i}" ${it.disabled ? 'disabled' : ''}>${it.check ? '<span class="check">✓</span>' : ''}${esc(it.label)}<span class="k">${it.key || ''}</span></button>`).join('');
+  m.hidden = false;
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+}
+function closeMenu() { $('#menu').hidden = true; menuAnchor?.classList.remove('open'); menuAnchor = null; }
+$('#menu').addEventListener('click', e => { const b = e.target.closest('[data-mi]'); if (!b) return; const it = menuItems[b.dataset.mi]; closeMenu(); it.run?.(); });
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#menu, .mb-item')) closeMenu(); });
+
+const soon = what => () => notify(`${what} isn't connected in this design prototype.`);
+const disabled = labels => labels.map(l => l === '-' ? '-' : { label: l[0], key: l[1], disabled: true });
+const MENUS = {
+  app: () => [{ label: 'About Networking Agent', run: () => notify('Design prototype with sample data only.') }, '-',
+    { label: 'Settings…', key: '⌘,', run: () => go('privacy') }, '-',
+    { label: 'Hide Networking Agent', key: '⌘H', run: () => hideWindow(true) }, { label: 'Quit Networking Agent', key: '⌘Q', run: soon('Quitting') }],
+  file: () => [{ label: 'Add Project Folder…', key: '⌘O', run: () => go('projects') }, { label: 'Import LinkedIn Archive…', run: soon('Archive import') }, '-',
+    { label: 'Close Window', key: '⌘W', run: () => hideWindow(false) }],
+  edit: () => disabled([['Undo', '⌘Z'], ['Redo', '⇧⌘Z'], '-', ['Cut', '⌘X'], ['Copy', '⌘C'], ['Paste', '⌘V']]),
+  view: () => [...SCREENS.map(([id, n], i) => ({ label: n, key: '⌘' + (i + 1), check: document.body.dataset.screen === id, run: () => go(id) })), '-',
+    { label: 'Free Flight', key: 'F', run: () => { go('network'); setFreeFlight(true); } },
+    { label: win.classList.contains('zoomed') ? 'Exit Full Screen' : 'Enter Full Screen', key: '⌃⌘F', run: toggleZoom }],
+  window: () => [{ label: 'Minimize', key: '⌘M', run: () => hideWindow(true) }, { label: 'Zoom', run: toggleZoom }, '-',
+    { label: 'Networking Agent', check: !win.classList.contains('closed'), run: showWindow }],
+  help: () => [{ label: 'Networking Agent Help', run: soon('Help') }],
+  agent: () => [{ label: STATES[statusIx][1], disabled: true }, '-',
+    { label: statusIx === 1 ? 'Resume Agent' : 'Pause Agent', run: () => setStatus(statusIx === 1 ? 0 : 1) },
+    { label: 'Open Dashboard', run: showWindow }, '-',
+    { label: `Review ${OPPS.filter(o => o.state === 'new' || o.state === 'review').length} Opportunities`, run: () => { showWindow(); go('opps'); } }],
 };
+$$('.mb-item[data-menu]').forEach(b => {
+  const open = () => { const r = b.getBoundingClientRect(); openMenu(MENUS[b.dataset.menu](), r.left, r.bottom + 2, b); };
+  b.addEventListener('click', () => menuAnchor === b ? closeMenu() : open());
+  b.addEventListener('pointerenter', () => { if (menuAnchor && menuAnchor !== b && menuAnchor.classList.contains('mb-item')) open(); });
+});
 
 /* ---------------- Opportunities ---------------- */
 // Approval belongs to one draft revision: editing an approved draft sends it back to review.
@@ -506,7 +653,7 @@ const BADGE = { new: ['New', ''], review: ['Edited · needs review', 'warn'], ap
 let oppFilter = 'all';
 function renderOpps() {
   $('#opp-filter').innerHTML = [['all', 'All'], ...Object.entries(PROJECTS).map(([k, p]) => [k, p.name])]
-    .map(([k, n]) => `<button class="chip" aria-pressed="${oppFilter === k}" data-of="${k}">${n}</button>`).join('');
+    .map(([k, n]) => `<button aria-pressed="${oppFilter === k}" data-of="${k}">${n}</button>`).join('');
   $('#opp-list').innerHTML = OPPS.map((o, i) => {
     o.state ??= 'new';
     const p = byId[o.who], [label, tone] = BADGE[o.state] || BADGE.new;
@@ -519,7 +666,7 @@ function renderOpps() {
       <textarea aria-label="Draft for ${esc(p.name)}" data-edit="${i}">${esc(o.draft)}</textarea>
       <div class="opp-actions"><span class="badge ${tone}" style="margin-right:auto">${label}</span>
         <button class="btn ghost" data-dismiss="${i}">Dismiss</button>
-        <button class="btn" data-person="${p.id}">View person</button>
+        <button class="btn" data-person="${p.id}">View Person</button>
         <button class="btn primary" data-approve="${i}" ${o.state === 'approved' ? 'hidden' : ''}>Approve</button></div>
     </article>`;
   }).join('');
@@ -527,8 +674,8 @@ function renderOpps() {
 }
 $('#opp-list').addEventListener('click', e => {
   const a = e.target.closest('[data-approve]'), d = e.target.closest('[data-dismiss]'), v = e.target.closest('[data-person]');
-  if (a) { const o = OPPS[a.dataset.approve]; o.state = nextState(o.state, 'approve'); renderOpps(); toast('Approved this version. Nothing is sent until you press Send.'); }
-  if (d) { const o = OPPS[d.dataset.dismiss], prev = o.state; o.state = nextState(o.state, 'dismiss'); renderOpps(); toast('Opportunity dismissed', () => { o.state = prev; renderOpps(); }); }
+  if (a) { const o = OPPS[a.dataset.approve]; o.state = nextState(o.state, 'approve'); renderOpps(); notify('Approved this version. Nothing is sent until you press Send.'); }
+  if (d) { const o = OPPS[d.dataset.dismiss], prev = o.state; o.state = nextState(o.state, 'dismiss'); renderOpps(); notify('Opportunity dismissed.', () => { o.state = prev; renderOpps(); }); }
   if (v) { go('network'); openPerson(byId[v.dataset.person], true); }
 });
 $('#opp-list').addEventListener('input', e => {
@@ -554,113 +701,158 @@ $$('[data-platform]').forEach(b => b.onclick = () => { platform = b.dataset.plat
 renderPost();
 
 /* ---------------- Projects and privacy ---------------- */
-$('#project-list').innerHTML = Object.entries(PROJECTS).map(([k, p]) => `
+$('#project-list').innerHTML = Object.values(PROJECTS).map(p => `
   <article class="card lit">
     <div class="row"><h3 style="margin:0">${p.name}</h3><span class="badge ${p.scanning ? '' : 'ok'}" style="margin-left:auto">${p.scanning ? 'Scanning changes' : 'Up to date'}</span></div>
     ${p.scanning ? '<div class="scan"><i></i></div>' : ''}
     <p class="muted" style="margin:10px 0">${p.summary}</p>
-    <div class="list" style="gap:6px;font-size:13px"><div><b style="font-weight:500">Your part:</b> <span style="color:var(--t2)">${p.contribution}</span></div><div><b style="font-weight:500">Result:</b> <span style="color:var(--t2)">${p.result}</span></div></div>
+    <div class="list" style="gap:4px"><div><b style="font-weight:600">Your part:</b> <span style="color:var(--t2)">${p.contribution}</span></div><div><b style="font-weight:600">Result:</b> <span style="color:var(--t2)">${p.result}</span></div></div>
     <div class="chips" style="margin:12px 0">${p.evidence.map(e => `<span class="chip">${e}</span>`).join('')}</div>
-    ${p.question ? `<div class="q"><span class="grow">${p.question}</span><button class="btn" data-toast="Answer saved to the project record.">Answer</button></div>` : ''}
-  </article>`).join('') + `<button class="drop" id="drop"><div><b>Add a project folder</b><div class="muted">Drop a folder here or click to choose</div></div></button>`;
+    ${p.question ? `<div class="q"><span class="grow">${p.question}</span><button class="btn" data-note="Answer saved to the project record.">Answer</button></div>` : ''}
+  </article>`).join('') + `<button class="drop" id="drop"><div><b>Add a Project Folder</b><div class="muted">Drop a folder from Finder, or click to choose</div></div></button>`;
 const drop = $('#drop');
-drop.onclick = () => toast('Design prototype: folder access is not connected.');
+drop.onclick = soon('Folder access');
 ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); if (ev === 'drop') drop.onclick(); }));
 
 $('#perm-list').innerHTML = Object.values(PROJECTS).map((p, i) => `
   <div class="item"><div class="grow"><b>${p.name}</b><div class="chips" style="margin-top:6px"><span class="chip">Excludes .env</span><span class="chip">node_modules</span><span class="chip">build/</span></div></div>
-  <label class="switch" title="Allow AI processing"><input type="checkbox" ${i < 2 ? 'checked' : ''} aria-label="Allow AI processing for ${p.name}"><span></span></label></div>`).join('');
+  <span class="muted">Allow AI processing</span><label class="switch"><input type="checkbox" ${i < 2 ? 'checked' : ''} aria-label="Allow AI processing for ${p.name}"><span></span></label></div>`).join('');
 
-/* ---------------- Person panel ---------------- */
+/* ---------------- Person inspector ---------------- */
+const endId = e => e.id ?? e;
 function openPerson(p, fly) {
   if (!p || p.id === 'me') return;
-  const linksOut = LINKS.filter(l => l.why && [l.source.id ?? l.source, l.target.id ?? l.target].includes(p.id));
+  const known = LINKS.filter(l => l.why && [endId(l.source), endId(l.target)].includes(p.id));
   $('#person-body').innerHTML = `
-    <div class="row" style="padding-right:40px"><div class="avatar lg">${initials(p.name)}</div><div><h2 style="font-size:20px">${esc(p.name)}</h2><div class="muted">${esc(p.role)}${p.org ? ' · ' + esc(p.org) : ''}</div></div></div>
-    <div class="chips" style="margin-top:14px">${p.profiles.map(x => `<span class="chip">${x}</span>`).join('')}<span class="badge ${p.status === 'connected' ? 'ok' : p.status === 'prospect' ? 'dim' : ''}">${p.status === 'prospect' ? 'Not contacted' : p.status === 'interacted' ? 'In conversation' : 'Connected'}</span></div>
-    <div class="panel-section"><h3>How you found them</h3><p style="font-size:13.5px;color:var(--t2)">${esc(p.source)}</p></div>
-    <div class="panel-section"><h3>Shared interests</h3><div class="list">${p.interests.map(([t, ev]) => `<div class="item" style="padding:9px 12px"><div class="grow"><b style="font-weight:500">${esc(t)}</b><div class="muted">Evidence: ${esc(ev)}</div></div></div>`).join('')}</div></div>
+    <div class="row" style="padding-right:30px"><div class="avatar lg">${initials(p.name)}</div><div><h2 style="font-size:18px">${esc(p.name)}</h2><div class="muted">${esc(p.role)}${p.org ? ' · ' + esc(p.org) : ''}</div></div></div>
+    <div class="chips" style="margin-top:12px">${p.profiles.map(x => `<span class="chip">${x}</span>`).join('')}<span class="badge ${p.status === 'connected' ? 'ok' : p.status === 'prospect' ? 'dim' : ''}">${p.status === 'prospect' ? 'Not contacted' : p.status === 'interacted' ? 'In conversation' : 'Connected'}</span></div>
+    <div class="panel-section"><h3>How you found them</h3><p style="color:var(--t2)">${esc(p.source)}</p></div>
+    <div class="panel-section"><h3>Shared interests</h3><div class="list">${p.interests.map(([t, ev]) => `<div class="item" style="padding:8px 10px"><div class="grow"><b style="font-weight:500">${esc(t)}</b><div class="muted">Evidence: ${esc(ev)}</div></div></div>`).join('')}</div></div>
     <div class="panel-section"><h3>Projects</h3><div class="chips">${p.projects.map(k => `<span class="chip">${PROJECTS[k].name}</span>`).join('')}</div></div>
-    ${linksOut.length ? `<div class="panel-section"><h3>Known connections</h3><div class="list">${linksOut.map(l => { const o = byId[(l.source.id ?? l.source) === p.id ? (l.target.id ?? l.target) : (l.source.id ?? l.source)]; return `<div class="muted">${esc(o.name)}: ${esc(l.why)}</div>`; }).join('')}</div></div>` : ''}
+    ${known.length ? `<div class="panel-section"><h3>Known connections</h3><div class="list">${known.map(l => { const o = byId[endId(l.source) === p.id ? endId(l.target) : endId(l.source)]; return `<div class="muted">${esc(o.name)}: ${esc(l.why)}</div>`; }).join('')}</div></div>` : ''}
     <div class="panel-section"><h3>History</h3><div class="timeline">${p.timeline.map(([k, text, d]) => `<div class="tl" style="--c:${EVENT[k][1]}"><b>${EVENT[k][0]}</b> <span class="muted">· ${d}</span><div class="muted">${esc(text)}</div></div>`).join('')}</div></div>
     ${p.followup ? `<div class="panel-section"><h3>Next follow-up</h3><div class="followup">${esc(p.followup)}</div></div>` : ''}
-    <div class="opp-actions" style="margin-top:22px"><button class="btn" data-toast="Note saved.">Add note</button><button class="btn primary" data-toast="A follow-up draft will appear in Opportunities.">Draft follow-up</button></div>`;
+    <div class="opp-actions" style="margin-top:20px"><button class="btn" data-note="Note saved.">Add Note</button><button class="btn primary" data-note="A follow-up draft will appear in Opportunities.">Draft Follow-up</button></div>`;
   $('#person').classList.add('open'); $('#person').setAttribute('aria-hidden', 'false');
-  selected = p.id; graph && refreshHalos();
+  selected = p.id; if (graph) applyDim();
   if (fly) flyTo(p);
 }
-function closePerson() { $('#person').classList.remove('open'); $('#person').setAttribute('aria-hidden', 'true'); selected = null; graph && refreshHalos(); }
+function closePerson() { $('#person').classList.remove('open'); $('#person').setAttribute('aria-hidden', 'true'); selected = null; if (graph) applyDim(); }
 $('#person-close').onclick = closePerson;
 
-/* ---------------- Command palette ---------------- */
-const SCREENS = [['home', 'Home'], ['opps', 'Opportunities'], ['posts', 'Posts'], ['network', 'Network'], ['projects', 'Projects'], ['privacy', 'Privacy']];
+/* ---------------- Spotlight search ---------------- */
 let palItems = [], palIx = 0;
 function renderPalette() {
-  const q = $('#pal-input').value.toLowerCase();
-  palItems = [...SCREENS.map(([id, n]) => ({ n, kind: 'Screen', run: () => go(id) })),
-    ...PEOPLE.filter(p => p.id !== 'me').map(p => ({ n: p.name, kind: p.role, run: () => { go('network'); openPerson(p, true); } }))]
+  const q = $('#pal-input').value.toLowerCase().trim();
+  palItems = [...SCREENS.map(([id, n], i) => ({ n, kind: '⌘' + (i + 1), run: () => go(id) })),
+    ...PEOPLE.filter(p => p.id !== 'me').map(p => ({ n: p.name, person: true, kind: p.role, run: () => { go('network'); openPerson(p, true); } }))]
     .filter(i => i.n.toLowerCase().includes(q)).slice(0, 9);
   palIx = Math.min(palIx, Math.max(0, palItems.length - 1));
-  $('#pal-list').innerHTML = palItems.map((it, i) => `<li role="option" aria-selected="${i === palIx}" data-pi="${i}">${esc(it.n)}<span class="muted">${esc(it.kind)}</span></li>`).join('') || '<li class="muted">No matches</li>';
+  $('#pal-list').innerHTML = palItems.map((it, i) => `<li role="option" aria-selected="${i === palIx}" data-pi="${i}">${it.person ? `<span class="avatar">${initials(it.n)}</span>` : ''}${esc(it.n)}<span class="muted">${esc(it.kind)}</span></li>`).join('') || '<li class="muted">No results</li>';
 }
-function openPalette() { $('#palette').classList.add('open'); $('#pal-input').value = ''; palIx = 0; renderPalette(); $('#pal-input').focus(); }
+function openPalette() { closeMenu(); showWindow(); $('#palette').classList.add('open'); $('#pal-input').value = ''; palIx = 0; renderPalette(); $('#pal-input').focus(); }
 function closePalette() { $('#palette').classList.remove('open'); }
 $('#open-palette').onclick = openPalette;
 $('#pal-input').addEventListener('input', () => { palIx = 0; renderPalette(); });
 $('#pal-list').addEventListener('click', e => { const li = e.target.closest('[data-pi]'); if (li) { closePalette(); palItems[li.dataset.pi].run(); } });
 $('#palette').addEventListener('click', e => { if (e.target.id === 'palette') closePalette(); });
 $('#pal-input').addEventListener('keydown', e => {
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); palIx = (palIx + (e.key === 'ArrowDown' ? 1 : -1) + palItems.length) % palItems.length; renderPalette(); }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && palItems.length) { e.preventDefault(); palIx = (palIx + (e.key === 'ArrowDown' ? 1 : -1) + palItems.length) % palItems.length; renderPalette(); }
   if (e.key === 'Enter' && palItems[palIx]) { closePalette(); palItems[palIx].run(); }
 });
 
-/* ---------------- Keyboard ---------------- */
+/* ---------------- Keyboard shortcuts ---------------- */
 const keys = new Set();
 document.addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#palette').classList.contains('open') ? closePalette() : openPalette(); return; }
-  if (e.key === 'Escape') { if ($('#palette').classList.contains('open')) closePalette(); else if (freeFlight) setFreeFlight(false); else closePerson(); return; }
+  const k = e.key.toLowerCase();
+  if (e.metaKey && e.ctrlKey && k === 'f') { e.preventDefault(); toggleZoom(); return; }
+  if (e.metaKey || e.ctrlKey) {
+    if (k === 'k' || k === 'f') { e.preventDefault(); $('#palette').classList.contains('open') ? closePalette() : openPalette(); return; }
+    if (/^[1-6]$/.test(k)) { e.preventDefault(); go(SCREENS[+k - 1][0]); return; }
+    if (k === '[') { e.preventDefault(); back(); return; }
+    if (k === ']') { e.preventDefault(); fwd(); return; }
+    if (k === ',') { e.preventDefault(); go('privacy'); return; }
+    if (k === 'o') { e.preventDefault(); go('projects'); return; }
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (!$('#menu').hidden) closeMenu(); else if ($('#palette').classList.contains('open')) closePalette();
+    else if (freeFlight) setFreeFlight(false); else closePerson();
+    return;
+  }
   if (e.target.matches?.('input, textarea')) return;
-  if (e.key.toLowerCase() === 'f' && document.body.dataset.screen === 'network') setFreeFlight(!freeFlight);
-  keys.add(e.key.toLowerCase());
+  if (k === 'f' && document.body.dataset.screen === 'network') setFreeFlight(!freeFlight);
+  keys.add(k);
 });
 document.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
 
 /* ---------------- 3D network ---------------- */
 let graph, THREE, selected = null, freeFlight = false, filter = 'all';
-const HINT = $('#hint').innerHTML;
+const HINT = '<span>Drag to orbit</span><span>Scroll to zoom</span><span>Right-click a person</span><span><kbd>F</kbd> free flight</span>';
+const FLY_HINT = '<span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move</span><span><kbd>Q</kbd> <kbd>E</kbd> down / up</span><span><kbd>⇧</kbd> boost</span><span><kbd>esc</kbd> exit</span>';
 function setFreeFlight(on) {
   freeFlight = on;
-  $('#hint').classList.toggle('fly', on);
-  $('#hint').innerHTML = on ? '<span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span><span><kbd>Q</kbd><kbd>E</kbd> down / up</span><span><kbd>Shift</kbd> boost</span><span>Drag to look</span><span><kbd>Esc</kbd> exit</span>' : HINT;
+  $('#hint').classList.toggle('fly', on); $('#hint').innerHTML = on ? FLY_HINT : HINT;
   if (graph) graph.controls().autoRotate = !on && !reduceMotion;
 }
 
 $('#net-filter').innerHTML = [['all', 'Everyone'], ...Object.entries(PROJECTS).map(([k, p]) => [k, p.name])]
-  .map(([k, n]) => `<button class="chip" aria-pressed="${k === 'all'}" data-nf="${k}">${n}</button>`).join('');
+  .map(([k, n]) => `<button aria-pressed="${k === 'all'}" data-nf="${k}">${n}</button>`).join('');
 $('#net-filter').addEventListener('click', e => {
   const c = e.target.closest('[data-nf]'); if (!c) return;
   filter = c.dataset.nf; $$('[data-nf]').forEach(b => b.setAttribute('aria-pressed', b === c));
-  PEOPLE.forEach(p => { const on = filter === 'all' || p.projects.includes(filter); p.__mats?.forEach(([m, base]) => m.opacity = on ? base : base * .12); });
-  graph?.linkVisibility(graph.linkVisibility());
+  if (graph) { applyDim(); graph.linkVisibility(graph.linkVisibility()); }
 });
 const visible = p => filter === 'all' || p.projects.includes(filter);
 
-function glowTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const g = c.getContext('2d'), grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(.25, 'rgba(255,255,255,.45)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
+function canvasTexture(draw) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  draw(c.getContext('2d')); return new THREE.CanvasTexture(c);
 }
-function refreshHalos() {
-  PEOPLE.forEach(p => p.__halo?.scale.setScalar(p.__r * (p.id === selected ? 9 : 5)));
+// Tight glow, like a star or an Obsidian node, not a big blob.
+const glowTexture = () => canvasTexture(g => {
+  const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(.08, 'rgba(255,255,255,.7)'); grd.addColorStop(.3, 'rgba(255,255,255,.12)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+});
+// Game-style target lock: four arc segments plus a faint inner ring.
+const reticleTexture = () => canvasTexture(g => {
+  g.strokeStyle = 'rgba(200,245,255,.95)'; g.lineWidth = 5;
+  for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(128, 128, 104, i * Math.PI / 2 + .25, (i + 1) * Math.PI / 2 - .25); g.stroke(); }
+  g.strokeStyle = 'rgba(200,245,255,.35)'; g.lineWidth = 2; g.beginPath(); g.arc(128, 128, 84, 0, Math.PI * 2); g.stroke();
+});
+
+// Hover (or selection) highlights a person and their direct links; everyone else dims, as in Obsidian.
+let hovered = null, focusSet = null;
+function neighbourSet(id) {
+  const s = new Set([id]);
+  LINKS.forEach(l => { const a = endId(l.source), b = endId(l.target); if (a === id) s.add(b); if (b === id) s.add(a); });
+  return s;
+}
+function applyDim() {
+  const focus = hovered ?? selected;
+  focusSet = focus ? neighbourSet(focus) : null;
+  PEOPLE.forEach(p => {
+    if (!p.__core) return;
+    p.__dim = (visible(p) ? 1 : .08) * (!focusSet || focusSet.has(p.id) ? 1 : .15);
+    p.__core.material.opacity = p.__dim; p.__halo.material.opacity = p.__haloBase * p.__dim;
+  });
+  graph.linkColor(graph.linkColor());
 }
 function flyTo(p) {
   if (!graph || p.x == null) return;
   const d = 110, h = Math.hypot(p.x, p.y, p.z) || 1, r = 1 + d / h;
   graph.cameraPosition({ x: p.x * r, y: p.y * r, z: p.z * r }, p, reduceMotion ? 0 : 1600);
+}
+function personMenu(p, ev) {
+  openMenu([
+    { label: 'Show in Inspector', run: () => openPerson(p, true) },
+    { label: 'Fly to ' + p.name.split(' ')[0], run: () => flyTo(p) },
+    { label: 'Draft Follow-up', run: () => notify(`A follow-up draft for ${p.name} will appear in Opportunities.`) }, '-',
+    { label: 'Copy Name', key: '⌘C', run: () => { navigator.clipboard?.writeText(p.name).catch(() => {}); notify('Name copied.'); } },
+  ], ev.clientX, ev.clientY);
 }
 
 async function initGraph() {
@@ -676,42 +868,62 @@ async function initGraph() {
     $('#scene').innerHTML = '<div class="scene-fallback">The 3D view needs an internet connection to load its library.</div>';
     return;
   }
-  const glow = glowTexture();
+  const el = $('#scene'), glow = glowTexture();
   const me = byId.me; me.fx = me.fy = me.fz = 0;
-  graph = new ForceGraph3D($('#scene'), { controlType: 'orbit' })
+  const LINK = { proposed: '#3d3858', interaction: '#7262c4', confirmed: '#2fb4cc' };
+  graph = new ForceGraph3D(el, { controlType: 'orbit' })
+    .width(el.clientWidth).height(el.clientHeight)
     .backgroundColor('rgba(0,0,0,0)')
     .showNavInfo(false)
     .graphData({ nodes: PEOPLE, links: LINKS })
     .nodeLabel(p => p.id === 'me' ? '' : `${esc(p.name)} · ${esc(p.role)}`)
     .nodeThreeObject(p => {
-      const color = COLOR[p.status], r = p.__r = { you: 9, connected: 6, interacted: 5, prospect: 3.6 }[p.status];
+      const color = COLOR[p.status], r = p.__r = { you: 3.2, connected: 2.2, interacted: 1.8, prospect: 1.3 }[p.status];
       const group = new THREE.Group();
-      const mat = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: .55, roughness: .15, metalness: .1, clearcoat: 1, transparent: true, opacity: .95 });
-      group.add(new THREE.Mesh(new THREE.SphereGeometry(r, 32, 24), mat));
-      const haloMat = new THREE.SpriteMaterial({ map: glow, color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: p.status === 'prospect' ? .35 : .7 });
-      const halo = p.__halo = new THREE.Sprite(haloMat); halo.scale.setScalar(r * 5); group.add(halo);
-      const label = new SpriteText(p.id === 'me' ? 'You' : p.name.split(' ')[0], p.id === 'me' ? 4.2 : 3, 'rgba(255,255,255,.9)');
-      label.fontFace = 'Inter, sans-serif'; label.fontWeight = '500'; label.position.y = -(r + 4.5); label.material.depthWrite = false; group.add(label);
-      p.__mats = [[mat, mat.opacity], [haloMat, haloMat.opacity], [label.material, 1]];
+      // Flat, unlit core: crisp like a star, no glossy plastic shading.
+      const core = p.__core = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), new THREE.MeshBasicMaterial({ color, transparent: true }));
+      group.add(core);
+      p.__haloBase = { you: .9, connected: .75, interacted: .6, prospect: .35 }[p.status];
+      const halo = p.__halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: p.__haloBase }));
+      halo.scale.setScalar(r * 9); group.add(halo);
+      const label = p.__label = new SpriteText(p.id === 'me' ? 'You' : p.name, p.id === 'me' ? 2.8 : 2.1, 'rgba(235,235,255,.85)');
+      label.fontFace = '-apple-system, BlinkMacSystemFont, sans-serif'; label.fontWeight = '500'; label.position.y = -(r + 3.2);
+      label.material.depthWrite = false; label.material.transparent = true; group.add(label);
       return group;
     })
-    .linkColor(l => ({ proposed: '#6b6694', interaction: '#a78bfa', confirmed: '#22d3ee' }[l.kind]))
-    .linkWidth(l => ({ proposed: 0, interaction: .8, confirmed: 1.4 }[l.kind]))
-    .linkOpacity(.55)
-    .linkVisibility(l => visible(l.source.id ? l.source : byId[l.source]) && visible(l.target.id ? l.target : byId[l.target]))
-    .linkDirectionalParticles(l => l.kind === 'confirmed' ? 3 : l.kind === 'interaction' ? 1 : 0)
-    .linkDirectionalParticleWidth(1.8)
-    .linkDirectionalParticleSpeed(.005)
-    .linkDirectionalParticleColor(() => '#e0f2fe')
-    .onNodeHover(p => $('#scene').style.cursor = p && p.id !== 'me' ? 'pointer' : null)
+    .linkColor(l => focusSet && !(focusSet.has(endId(l.source)) && focusSet.has(endId(l.target))) ? '#1c1830' : LINK[l.kind])
+    .linkWidth(0)
+    .linkOpacity(.7)
+    .linkVisibility(l => visible(byId[endId(l.source)]) && visible(byId[endId(l.target)]))
+    .linkDirectionalParticles(l => l.kind === 'confirmed' ? 2 : 0)
+    .linkDirectionalParticleWidth(.7)
+    .linkDirectionalParticleSpeed(.004)
+    .linkDirectionalParticleColor(() => '#d8fbff')
+    .onNodeHover(p => { el.style.cursor = p && p.id !== 'me' ? 'pointer' : null; hovered = p?.id ?? null; applyDim(); })
     .onNodeClick(p => p.id === 'me' ? flyTo(p) : openPerson(p, true))
-    .onBackgroundClick(closePerson);
+    .onNodeRightClick((p, ev) => p.id !== 'me' && personMenu(p, ev))
+    .onBackgroundClick(() => { closeMenu(); closePerson(); });
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  new ResizeObserver(() => graph.width(el.clientWidth).height(el.clientHeight)).observe(el);
 
   // Stronger relationships sit closer to you.
   graph.d3Force('link').distance(l => ({ confirmed: 45, interaction: 75, proposed: 110 }[l.kind]));
   graph.d3Force('charge').strength(-110);
-  graph.scene().fog = new THREE.FogExp2(0x0b0819, .0019);
-  graph.cameraPosition({ x: 0, y: 40, z: 290 });
+  graph.scene().fog = new THREE.FogExp2(0x0b0819, .0022);
+  graph.cameraPosition({ x: 0, y: 30, z: 230 });
+
+  // Faint star dust for depth, like a game galaxy map.
+  const dust = new Float32Array(1800 * 3);
+  for (let i = 0; i < dust.length; i += 3) {
+    const r = 260 + Math.random() * 700, t = Math.random() * Math.PI * 2, u = Math.acos(2 * Math.random() - 1);
+    dust[i] = r * Math.sin(u) * Math.cos(t); dust[i + 1] = r * Math.sin(u) * Math.sin(t); dust[i + 2] = r * Math.cos(u);
+  }
+  const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dust, 3));
+  graph.scene().add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x9d93d6, size: 1.3, transparent: true, opacity: .55, depthWrite: false, fog: false })));
+
+  const reticle = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticleTexture(), transparent: true, depthWrite: false, depthTest: false }));
+  reticle.visible = false; graph.scene().add(reticle);
+  applyDim();
 
   const controls = graph.controls();
   controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = .5; controls.enableDamping = true;
@@ -720,16 +932,31 @@ async function initGraph() {
   controls.addEventListener('end', () => { clearTimeout(idle); idle = setTimeout(() => controls.autoRotate = !freeFlight && !reduceMotion, 6000); });
 
   // Free flight: WASD moves camera and orbit target together, so mouse drag still looks around.
-  const fwd = new THREE.Vector3(), right = new THREE.Vector3(), step = new THREE.Vector3();
-  (function loop() {
+  const fwdV = new THREE.Vector3(), right = new THREE.Vector3(), step = new THREE.Vector3();
+  (function loop(t) {
     requestAnimationFrame(loop);
+    const cam = graph.camera();
+    // Names fade in as you get close; the focused person and their links always show.
+    PEOPLE.forEach(p => {
+      if (!p.__label || p.x == null) return;
+      const dist = cam.position.distanceTo(p);
+      const near = p.id === 'me' || focusSet?.has(p.id) ? 1 : Math.min(1, Math.max(0, (190 - dist) / 90));
+      p.__label.material.opacity = near * (p.__dim ?? 1);
+    });
+    const sel = selected && byId[selected];
+    reticle.visible = !!sel && sel.x != null;
+    if (reticle.visible) {
+      reticle.position.set(sel.x, sel.y, sel.z);
+      reticle.scale.setScalar(sel.__r * 6 * (reduceMotion ? 1 : 1 + .06 * Math.sin((t || 0) / 300)));
+      if (!reduceMotion) reticle.material.rotation += .01;
+    }
     if (!freeFlight || !keys.size) return;
-    const cam = graph.camera(), speed = keys.has('shift') ? 5 : 1.8;
-    fwd.subVectors(controls.target, cam.position).normalize();
-    right.crossVectors(fwd, cam.up).normalize();
+    const speed = keys.has('shift') ? 5 : 1.8;
+    fwdV.subVectors(controls.target, cam.position).normalize();
+    right.crossVectors(fwdV, cam.up).normalize();
     step.set(0, 0, 0);
-    if (keys.has('w') || keys.has('arrowup')) step.add(fwd);
-    if (keys.has('s') || keys.has('arrowdown')) step.sub(fwd);
+    if (keys.has('w') || keys.has('arrowup')) step.add(fwdV);
+    if (keys.has('s') || keys.has('arrowdown')) step.sub(fwdV);
     if (keys.has('d') || keys.has('arrowright')) step.add(right);
     if (keys.has('a') || keys.has('arrowleft')) step.sub(right);
     if (keys.has('e')) step.add(cam.up);
@@ -738,8 +965,6 @@ async function initGraph() {
     step.normalize().multiplyScalar(speed);
     cam.position.add(step); controls.target.add(step);
   })();
-
-  addEventListener('resize', () => graph.width(innerWidth).height(innerHeight));
 }
 
 go('network');
