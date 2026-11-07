@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Networking Agent Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0819;
+  --t1: #ffffff; --t2: rgba(255,255,255,.80); --t3: rgba(255,255,255,.60);
+  --violet: #a78bfa; --cyan: #22d3ee; --pink: #f0abfc; --dim: #6b6694;
+  --ok: #4ade80; --warn: #fbbf24; --danger: #fb7185;
+  --glass-thin: rgba(255,255,255,.06);
+  --glass: rgba(22,16,48,.42);
+  --glass-thick: rgba(16,11,36,.70);
+  --line: rgba(255,255,255,.14); --line-strong: rgba(255,255,255,.26);
+  --inset: rgba(255,255,255,.06); --sel: rgba(255,255,255,.12);
+  --accent: linear-gradient(135deg,#8b5cf6,#22d3ee);
+  --accent-soft: rgba(167,139,250,.22); --accent-text: #e4dcff;
+  --r-lg: 22px; --r: 16px; --r-sm: 10px;
+  --spring: cubic-bezier(.34,1.4,.64,1); --ease: cubic-bezier(.2,.8,.2,1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--t1); font: 14px/1.5 Inter, -apple-system, sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+h1, h2, h3 { font-family: "Space Grotesk", sans-serif; font-weight: 600; letter-spacing: -.01em; }
+
+/* Ambient aurora behind the 3D scene */
+.aurora { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+.aurora i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; animation: drift 26s ease-in-out infinite alternate; }
+.aurora i:nth-child(1) { width: 60vw; height: 60vw; background: #6d28d9; top: -25vw; left: -10vw; }
+.aurora i:nth-child(2) { width: 50vw; height: 50vw; background: #0891b2; bottom: -25vw; right: -10vw; animation-delay: -8s; }
+.aurora i:nth-child(3) { width: 34vw; height: 34vw; background: #db2777; top: 35%; left: 45%; opacity: .32; animation-delay: -15s; }
+@keyframes drift { to { transform: translate(6vw, -4vw) scale(1.12); } }
+body[data-status="paused"] .aurora i { animation-play-state: paused; filter: blur(90px) saturate(.4); }
+
+#scene { position: fixed; inset: 0; z-index: 1; transition: opacity .6s var(--ease), filter .6s var(--ease); }
+body:not([data-screen="network"]) #scene { opacity: .45; filter: saturate(.8); pointer-events: none; }
+.scene-fallback { position: absolute; inset: 0; display: grid; place-items: center; color: var(--t3); }
+.scene-tooltip { font: 500 12px Inter, sans-serif !important; padding: 6px 10px !important; border-radius: 8px !important; background: var(--glass-thick) !important; backdrop-filter: blur(12px); border: 1px solid var(--line); }
+
+/* Glass material */
+.glass { position: relative; background: var(--glass); border: 1px solid var(--line); border-radius: var(--r-lg);
+  backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.16); }
+.glass.thick { background: var(--glass-thick); backdrop-filter: blur(36px) saturate(150%); -webkit-backdrop-filter: blur(36px) saturate(150%); }
+.glass.thin { background: var(--glass-thin); backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); }
+.glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(140deg, rgba(255,255,255,.09), transparent 38%); }
+.lit::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(360px circle at var(--mx,-500px) var(--my,-500px), rgba(255,255,255,.10), transparent 45%); }
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass.thick, .glass.thin { background: #17112f; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+/* App shell */
+.app { position: fixed; inset: 0; z-index: 2; display: grid; grid-template-columns: 228px minmax(0,1fr); gap: 16px; padding: 16px; pointer-events: none; }
+.sidebar, .screen:not(.network-screen), .net-ui > *, #person, #palette, #toast { pointer-events: auto; }
+.sidebar { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font: 600 15px "Space Grotesk", sans-serif; }
+.brand-mark { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); box-shadow: 0 0 24px rgba(139,92,246,.6); }
+.nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 12px; background: transparent; color: var(--t2); text-align: left; transition: background .2s, color .2s; }
+.nav-btn:hover { background: var(--inset); color: var(--t1); }
+.nav-btn[aria-current="page"] { background: var(--sel); color: var(--t1); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+.nav-btn svg { width: 18px; height: 18px; flex: none; }
+.nav-btn .count { margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
+.sidebar .spacer { flex: 1; }
+.kbd-hint { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--inset); color: var(--t3); font-size: 12.5px; }
+kbd { font: 500 11px Inter, sans-serif; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line-strong); color: var(--t2); }
+.status { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--inset); color: var(--t2); font-size: 12.5px; text-align: left; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; box-shadow: 0 0 10px currentColor; color: var(--ok); }
+body[data-status="running"] .status .dot { animation: pulse 1.6s ease-in-out infinite; }
+body[data-status="paused"] .status .dot { background: var(--warn); color: var(--warn); }
+body[data-status="catching"] .status .dot { background: var(--cyan); color: var(--cyan); animation: pulse .8s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+main { position: relative; min-width: 0; overflow: hidden; }
+.screen { display: none; height: 100%; }
+.screen.on { display: block; animation: rise .5s var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.99); } }
+.sheet { height: 100%; overflow-y: auto; padding: 28px 30px 40px; }
+.sheet-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+.sheet-head h1 { font-size: 26px; }
+.sub { color: var(--t3); font-size: 13.5px; margin-top: 4px; }
+.grid { display: grid; gap: 14px; }
+.cols-4 { grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); }
+.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); }
+.card { position: relative; padding: 18px; border-radius: var(--r); background: var(--glass-thin); border: 1px solid var(--line); transition: transform .35s var(--spring), border-color .2s; }
+.card:hover { border-color: var(--line-strong); }
+.card h3 { font-size: 15px; margin-bottom: 6px; }
+.metric b { display: block; font: 600 30px "Space Grotesk", sans-serif; margin-top: 4px; background: linear-gradient(135deg,#fff,#c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.metric span { color: var(--t3); font-size: 12.5px; }
+.section-title { font: 600 14px "Space Grotesk", sans-serif; color: var(--t2); margin: 26px 0 12px; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--inset); border: 1px solid var(--line); }
+.item .grow { flex: 1; min-width: 0; }
+.muted { color: var(--t3); font-size: 12.5px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 12.5px; flex: none; background: var(--accent-soft); color: var(--accent-text); border: 1px solid rgba(167,139,250,.4); }
+.avatar.lg { width: 56px; height: 56px; font-size: 18px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--inset); color: var(--t2); white-space: nowrap; }
+button.chip:hover { border-color: var(--line-strong); color: var(--t1); }
+button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); border-color: rgba(167,139,250,.5); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 11px; border: 1px solid var(--line); background: var(--inset); font-weight: 500; font-size: 13px; transition: transform .2s var(--spring), background .2s, border-color .2s; }
+.btn:hover { border-color: var(--line-strong); background: var(--sel); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); border-color: transparent; color: #fff; box-shadow: 0 6px 24px rgba(139,92,246,.4); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--t2); }
+.badge { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
+.badge.ok { background: rgba(74,222,128,.16); color: #bbf7d0; }
+.badge.warn { background: rgba(251,191,36,.16); color: #fde68a; }
+.badge.dim { background: var(--inset); color: var(--t3); }
+textarea { width: 100%; resize: vertical; min-height: 92px; padding: 12px 14px; border-radius: 13px; border: 1px solid rgba(167,139,250,.4); background: rgba(139,92,246,.10); line-height: 1.55; font-size: 13.5px; }
+textarea:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(167,139,250,.25); }
+
+/* Network screen overlays */
+.network-screen.on { display: block; }
+.net-ui { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+.toolbar { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 18px; flex-wrap: wrap; align-self: flex-start; max-width: 100%; }
+.toolbar h1 { font-size: 18px; margin-right: 6px; }
+.legend { display: flex; gap: 12px; font-size: 12px; color: var(--t3); }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.legend i { width: 9px; height: 9px; border-radius: 50%; }
+.hint { align-self: center; display: flex; gap: 14px; padding: 8px 16px; border-radius: 99px; font-size: 12.5px; color: var(--t2); flex-wrap: wrap; justify-content: center; }
+.hint.fly { border-color: rgba(34,211,238,.5); box-shadow: 0 0 30px rgba(34,211,238,.25); }
+
+/* Person panel */
+#person { position: fixed; z-index: 3; top: 16px; right: 16px; bottom: 16px; width: 380px; max-width: calc(100vw - 32px); overflow-y: auto; padding: 22px;
+  transform: translateX(calc(100% + 40px)); transition: transform .6s var(--spring); }
+#person.open { transform: none; }
+.panel-close { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line); background: var(--inset); display: grid; place-items: center; z-index: 1; }
+.timeline { position: relative; display: flex; flex-direction: column; gap: 14px; padding-left: 22px; }
+.timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.tl { position: relative; }
+.tl::before { content: ""; position: absolute; left: -21px; top: 5px; width: 11px; height: 11px; border-radius: 50%; background: var(--bg); border: 2px solid var(--c, var(--dim)); box-shadow: 0 0 10px var(--c, transparent); }
+.tl b { font-weight: 500; font-size: 13px; }
+.panel-section { margin-top: 22px; }
+.panel-section h3 { font-size: 13px; color: var(--t3); font-family: Inter, sans-serif; font-weight: 500; margin-bottom: 10px; }
+.followup { padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(34,211,238,.35); background: rgba(34,211,238,.08); font-size: 13px; }
+
+/* Opportunities */
+.opp { display: flex; flex-direction: column; gap: 12px; }
+.opp.dismissed { display: none; }
+.post { font-size: 13.5px; line-height: 1.6; color: var(--t2); padding: 12px 14px; border-radius: 13px; background: var(--inset); border: 1px solid var(--line); }
+.why { font-size: 13px; color: var(--t2); }
+.why strong { color: var(--t1); font-weight: 500; }
+.opp-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.score { font: 600 13px "Space Grotesk", sans-serif; padding: 4px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); margin-left: auto; }
+
+/* Projects */
+.drop { display: grid; place-items: center; text-align: center; gap: 6px; min-height: 160px; border: 1.5px dashed var(--line-strong); border-radius: var(--r); color: var(--t3); background: transparent; transition: border-color .2s, background .2s, transform .3s var(--spring); }
+.drop:hover, .drop.over { border-color: var(--cyan); background: rgba(34,211,238,.06); color: var(--t1); transform: scale(1.01); }
+.q { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.3); font-size: 13px; }
+.q .grow { flex: 1; }
+.scan { height: 3px; border-radius: 3px; background: var(--inset); overflow: hidden; margin-top: 10px; }
+.scan i { display: block; height: 100%; width: 40%; background: var(--accent); animation: scan 1.8s ease-in-out infinite; }
+@keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+/* Posts */
+.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--inset); border: 1px solid var(--line); }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 9px; color: var(--t2); font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--sel); color: var(--t1); }
+.preview { background: #fff; color: #1d2226; border-radius: 14px; padding: 16px; font-size: 14px; line-height: 1.5; box-shadow: 0 20px 50px rgba(0,0,0,.4); }
+.preview.x { background: #000; color: #e7e9ea; border: 1px solid #2f3336; }
+.preview .pv-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.preview .pv-av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg,#8b5cf6,#22d3ee); }
+.preview .pv-name { font-weight: 600; font-size: 14px; }
+.preview .pv-meta { font-size: 12px; opacity: .6; }
+.preview p { white-space: pre-wrap; }
+.over-limit { color: var(--danger); }
+
+/* Privacy */
+.switch { position: relative; width: 42px; height: 24px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+.switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--inset); border: 1px solid var(--line-strong); transition: background .25s; pointer-events: none; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .35s var(--spring); }
+.switch input:checked + span { background: var(--accent); border-color: transparent; }
+.switch input:checked + span::after { transform: translateX(18px); }
+.switch input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
+table.log { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.log th { text-align: left; font-weight: 500; color: var(--t3); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+table.log td { padding: 10px; border-bottom: 1px solid var(--line); color: var(--t2); }
+
+/* Command palette */
+#palette { position: fixed; inset: 0; z-index: 10; display: none; place-items: start center; padding-top: 14vh; background: rgba(5,3,15,.45); }
+#palette.open { display: grid; }
+.pal { width: min(560px, calc(100vw - 32px)); padding: 10px; animation: pop .35s var(--spring); }
+@keyframes pop { from { opacity: 0; transform: scale(.94) translateY(-8px); } }
+.pal input { width: 100%; padding: 12px 14px; border: 0; background: transparent; font-size: 16px; outline: none; border-bottom: 1px solid var(--line); }
+.pal ul { list-style: none; max-height: 320px; overflow-y: auto; padding: 6px 0 0; }
+.pal li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--t2); cursor: pointer; }
+.pal li[aria-selected="true"] { background: var(--sel); color: var(--t1); }
+.pal li .muted { margin-left: auto; }
+
+#toast { position: fixed; z-index: 11; left: 50%; bottom: 28px; transform: translate(-50%, calc(100% + 60px)); opacity: 0; padding: 11px 18px; border-radius: 14px; font-size: 13.5px; transition: transform .5s var(--spring), opacity .3s; display: flex; gap: 12px; align-items: center; }
+#toast.show { transform: translate(-50%, 0); opacity: 1; }
+#toast button { border: 0; background: none; color: var(--cyan); font-weight: 600; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+@media (max-width: 820px) {
+  .app { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr) auto; padding: 10px; gap: 10px; }
+  .sidebar { order: 2; flex-direction: row; overflow-x: auto; padding: 8px; border-radius: 18px; }
+  .sidebar .brand, .sidebar .spacer, .kbd-hint, .nav-btn .label { display: none; }
+  .status { width: auto; margin: 0; }
+  .nav-btn { width: auto; }
+  .sheet { padding: 20px 16px 32px; }
+  #person { top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; max-height: 72vh; transform: translateY(calc(100% + 30px)); }
+  .legend { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: .01s !important; }
+}
+</style>
+</head>
+<body data-screen="network" data-status="running">
+<h2 class="sr-only">Design prototype of a local-first networking app with a 3D people network and glass interface. All data is sample data.</h2>
+
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+<div id="scene" aria-label="3D network of people. Use the command palette or the person list to open a person." role="img"></div>
+
+<div class="app">
+  <nav class="sidebar glass lit" aria-label="Main">
+    <div class="brand"><div class="brand-mark"></div>Networking agent</div>
+    <button class="nav-btn" data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span class="label">Home</span></button>
+    <button class="nav-btn" data-go="opps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg><span class="label">Opportunities</span><span class="count" id="opp-count">4</span></button>
+    <button class="nav-btn" data-go="posts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg><span class="label">Posts</span><span class="count">2</span></button>
+    <button class="nav-btn" data-go="network"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="18" r="2"/><path d="M10 10L6.5 7.5M14 10l3.5-2.5M10 14l-3 3.5M14 14l2.6 2.6"/></svg><span class="label">Network</span></button>
+    <button class="nav-btn" data-go="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="label">Projects</span></button>
+    <button class="nav-btn" data-go="privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><span class="label">Privacy</span></button>
+    <div class="spacer"></div>
+    <button class="kbd-hint" id="open-palette">Jump to… <kbd>⌘K</kbd></button>
+    <button class="status" id="status" title="Click to preview agent states"><span class="dot"></span><span id="status-text">Agent running</span></button>
+  </nav>
+
+  <main>
+    <!-- HOME -->
+    <section class="screen" data-screen="home">
+      <div class="sheet glass lit">
+        <div class="sheet-head">
+          <div><h1>Good evening</h1><p class="sub">Your weekly review · Nov 1 – Nov 7. Nothing is sent without your approval.</p></div>
+          <button class="btn primary" data-go="opps">Review opportunities</button>
+        </div>
+        <div class="grid cols-4">
+          <div class="card metric lit"><span>New opportunities</span><b>8</b></div>
+          <div class="card metric lit"><span>Follow-ups due</span><b>3</b></div>
+          <div class="card metric lit"><span>Post ideas</span><b>2</b></div>
+          <div class="card metric lit"><span>Questions for you</span><b>2</b></div>
+        </div>
+        <div class="grid cols-2" style="margin-top:14px">
+          <div>
+            <div class="section-title">Follow-ups due</div>
+            <div class="list">
+              <div class="item"><div class="avatar">PM</div><div class="grow"><b>Priya Menon</b><div class="muted">Send the eval notebook she asked about</div></div><span class="badge warn">Nov 9</span></div>
+              <div class="item"><div class="avatar">AR</div><div class="grow"><b>Alex Romero</b><div class="muted">Share HackMap v2 demo</div></div><span class="badge dim">Nov 12</span></div>
+              <div class="item"><div class="avatar">MT</div><div class="grow"><b>Mei Tanaka</b><div class="muted">Your PR to graphkit was merged. Say thanks.</div></div><span class="badge dim">Nov 14</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="section-title">What changed in your projects</div>
+            <div class="list">
+              <div class="item"><div class="grow"><b>CubeSync</b><div class="muted">New eval results: 0 false merges on 4,112 contacts</div></div><button class="btn" data-go="posts">Draft post</button></div>
+              <div class="item"><div class="grow"><b>Graph thesis</b><div class="muted">Chapter 3 added. Who wrote the benchmark code?</div></div><button class="btn" data-go="projects">Answer</button></div>
+              <div class="item"><div class="grow"><b>HackMap</b><div class="muted">Small changes. Not worth a post yet.</div></div><span class="badge dim">Skipped</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OPPORTUNITIES -->
+    <section class="screen" data-screen="opps">
+      <div class="sheet glass lit">
+        <div class="sheet-head">
+          <div><h1>Opportunities</h1><p class="sub">Ranked by how useful your work is to the conversation, not just topic overlap.</p></div>
+          <div class="chips" id="opp-filter"></div>
+        </div>
+        <div class="grid cols-2" id="opp-list"></div>
+      </div>
+    </section>
+
+    <!-- POSTS -->
+    <section class="screen" data-screen="posts">
+      <div class="sheet glass lit">
+        <div class="sheet-head">
+          <div><h1>Post drafts</h1><p class="sub">Drafted from meaningful project changes. You edit and publish.</p></div>
+          <div class="seg" role="group" aria-label="Platform"><button aria-pressed="true" data-platform="li">LinkedIn</button><button aria-pressed="false" data-platform="x">X</button></div>
+        </div>
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="row" style="margin-bottom:10px"><h3 style="margin:0">CubeSync eval milestone</h3><span class="badge" style="margin-left:auto">From CubeSync</span></div>
+            <textarea id="post-text" rows="9" aria-label="Post draft">We stopped merging contacts by name.
+
+CubeSync now keys identities on stable platform IDs. On 4,112 real contacts across Gmail and LinkedIn exports, that took false merges from 37 to 0.
+
+The trade-off: a few duplicates now need a manual confirm. Worth it.
+
+Notebook and method in the repo if you work on identity resolution.</textarea>
+            <div class="row" style="margin-top:10px"><div class="chips"><span class="chip">eval/results.csv</span><span class="chip">README.md</span></div><span class="muted" id="post-count" style="margin-left:auto"></span></div>
+            <div class="opp-actions" style="margin-top:14px"><button class="btn ghost">Not worth posting</button><button class="btn" data-toast="Copied. Paste it into LinkedIn to publish.">Copy</button><button class="btn primary" data-toast="Approved. It won't publish until you press Publish.">Approve</button></div>
+          </div>
+          <div>
+            <div class="section-title" style="margin-top:0">Preview</div>
+            <div class="preview" id="preview"><div class="pv-head"><div class="pv-av"></div><div><div class="pv-name">You</div><div class="pv-meta" id="pv-meta">CS student · now</div></div></div><p id="pv-text"></p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NETWORK -->
+    <section class="screen network-screen" data-screen="network">
+      <div class="net-ui">
+        <div class="toolbar glass lit">
+          <h1>Your network</h1>
+          <div class="chips" id="net-filter" role="group" aria-label="Filter by project"></div>
+          <div class="legend"><span><i style="background:var(--dim)"></i>Proposed</span><span><i style="background:var(--violet)"></i>Interacted</span><span><i style="background:var(--cyan);box-shadow:0 0 8px var(--cyan)"></i>Connected</span></div>
+        </div>
+        <div class="hint glass thin" id="hint"><span>Drag to orbit</span><span>Scroll to zoom</span><span>Click a person</span><span><kbd>F</kbd> free flight</span></div>
+      </div>
+    </section>
+
+    <!-- PROJECTS -->
+    <section class="screen" data-screen="projects">
+      <div class="sheet glass lit">
+        <div class="sheet-head">
+          <div><h1>Projects</h1><p class="sub">Each folder is added separately and has its own AI permission.</p></div>
+        </div>
+        <div class="grid cols-2" id="project-list"></div>
+      </div>
+    </section>
+
+    <!-- PRIVACY -->
+    <section class="screen" data-screen="privacy">
+      <div class="sheet glass lit">
+        <div class="sheet-head"><div><h1>Privacy</h1><p class="sub">Your database stays on this Mac. Selected excerpts go to the AI provider only for folders you allow.</p></div></div>
+        <div class="list" id="perm-list"></div>
+        <div class="section-title">What left this Mac</div>
+        <div class="card" style="padding:6px 8px; overflow-x:auto">
+          <table class="log">
+            <thead><tr><th>When</th><th>Folder</th><th>What was sent</th><th>To</th></tr></thead>
+            <tbody>
+              <tr><td>Today 16:42</td><td>CubeSync</td><td>3 excerpts from README.md, eval/results.csv</td><td>Model provider</td></tr>
+              <tr><td>Today 09:10</td><td>Graph thesis</td><td>Chapter 3 summary request</td><td>Model provider</td></tr>
+              <tr><td>Nov 5 21:03</td><td>HackMap</td><td>Changed files list (no contents)</td><td>Model provider</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<aside id="person" class="glass thick lit" aria-label="Person details" aria-hidden="true">
+  <button class="panel-close" id="person-close" aria-label="Close person panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <div id="person-body"></div>
+</aside>
+
+<div id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+  <div class="pal glass thick"><input id="pal-input" placeholder="Jump to a screen or person" autocomplete="off" aria-label="Search"><ul id="pal-list" role="listbox"></ul></div>
+</div>
+<div id="toast" class="glass thick" role="status" aria-live="polite"><span id="toast-text"></span><button id="toast-undo" hidden>Undo</button></div>
+
+<script type="module">
+/* ---------------- Sample data (design prototype only) ---------------- */
+const PROJECTS = {
+  cubesync: { name: 'CubeSync', summary: 'Local contact deduplication across Gmail and LinkedIn exports.', contribution: 'You designed the identity model and wrote the eval harness.', result: '0 false merges on 4,112 contacts (was 37).', evidence: ['README.md', 'eval/results.csv', 'src/merge.rs'], question: null, scanning: false },
+  thesis:   { name: 'Graph thesis', summary: 'Community detection on sparse social graphs.', contribution: 'Method and chapters 1 to 3 are yours.', result: '11% better modularity than Louvain on 3 of 4 datasets.', evidence: ['thesis/ch3.tex', 'bench/run.py'], question: 'Did you write bench/run.py, or did your co-author?', scanning: true },
+  hackmap:  { name: 'HackMap', summary: 'Matches hackathon participants into balanced teams.', contribution: 'Built the matching algorithm and the web UI.', result: 'Used by 140 people at one hackathon.', evidence: ['app/match.ts', 'DEMO.md'], question: 'Is the 140-user number from the organisers or your own logs?', scanning: false },
+};
+
+const ME = { id: 'me', name: 'You', role: 'CS student', status: 'you', projects: Object.keys(PROJECTS) };
+const PEOPLE = [
+  ME,
+  { id: 'priya', name: 'Priya Menon', role: 'ML engineer', org: 'Lumen', status: 'connected', projects: ['cubesync'], profiles: ['LinkedIn', 'GitHub'],
+    source: 'Her LinkedIn post asking how to deduplicate contacts without merging by name.',
+    interests: [['Identity resolution', 'her post · your CubeSync README'], ['Local-first software', 'her profile · your project setup']],
+    timeline: [['discovered', 'Found via her post on contact dedup', 'Oct 14'], ['approved', 'You approved a public reply', 'Oct 14'], ['sent', 'Reply posted on LinkedIn', 'Oct 15'], ['replied', 'She replied and asked for the eval', 'Oct 16'], ['connected', 'Connection accepted on LinkedIn', 'Oct 18']],
+    followup: 'Send the eval notebook she asked about · due Nov 9' },
+  { id: 'alex', name: 'Alex Romero', role: 'Founder', org: 'Threadline', status: 'interacted', projects: ['hackmap'], profiles: ['LinkedIn', 'X'],
+    source: 'His X thread wishing hackathon team matching worked better.',
+    interests: [['Team formation', 'his thread · your HackMap demo']],
+    timeline: [['discovered', 'Found via his X thread', 'Oct 22'], ['approved', 'You approved a DM with the demo link', 'Oct 23'], ['sent', 'DM sent on X', 'Oct 23'], ['replied', 'He asked about scaling past 500 people', 'Oct 25']],
+    followup: 'Share HackMap v2 demo when ready · due Nov 12' },
+  { id: 'mei', name: 'Mei Tanaka', role: 'Open-source maintainer', org: 'graphkit', status: 'connected', projects: ['thesis'], profiles: ['GitHub', 'LinkedIn'],
+    source: 'A graphkit GitHub issue about sparse-graph performance.',
+    interests: [['Graph algorithms', 'the issue · your thesis chapter 3']],
+    timeline: [['discovered', 'Found via graphkit issue #412', 'Sep 30'], ['approved', 'You approved a comment with a repro', 'Oct 1'], ['sent', 'Comment posted on GitHub', 'Oct 1'], ['replied', 'She invited a PR', 'Oct 2'], ['connected', 'She followed you on GitHub', 'Oct 9']],
+    followup: 'Thank her. Your PR was merged · due Nov 14' },
+  { id: 'omar', name: 'Omar Haddad', role: 'Research engineer', org: 'Lumen', status: 'connected', projects: ['cubesync'], profiles: ['LinkedIn'],
+    source: 'Introduced in Priya\'s reply thread.', interests: [['Data quality', 'his comment · your eval results']],
+    timeline: [['discovered', 'Joined the thread with Priya', 'Oct 16'], ['replied', 'He commented on your reply', 'Oct 16'], ['connected', 'Connection accepted on LinkedIn', 'Oct 20']], followup: null },
+  { id: 'lena', name: 'Lena Fischer', role: 'Product designer', org: 'Fable Labs', status: 'interacted', projects: ['hackmap'], profiles: ['LinkedIn'],
+    source: 'Her post asking for examples of fair team matching.', interests: [['Fairness in matching', 'her post · HackMap README']],
+    timeline: [['discovered', 'Found via her post', 'Oct 28'], ['approved', 'You approved a reply with your case study', 'Oct 28'], ['sent', 'Reply posted on LinkedIn', 'Oct 29']], followup: 'No reply yet. Check again on Nov 11' },
+  { id: 'sam', name: 'Sam Okafor', role: 'PhD student', org: 'ETH Zürich', status: 'prospect', projects: ['thesis'], profiles: ['LinkedIn'],
+    source: 'His post about a community detection method you applied.', interests: [['Community detection', 'his paper · your thesis ch. 3']],
+    timeline: [['discovered', 'Found via his post', 'Nov 6'], ['draft', 'Draft waiting in Opportunities', 'Nov 6']], followup: null },
+  { id: 'jordan', name: 'Jordan Lee', role: 'Engineering recruiter', org: 'Northwind', status: 'prospect', projects: ['cubesync', 'hackmap'], profiles: ['LinkedIn'],
+    source: 'A hiring post for someone who has built entity resolution.', interests: [['Entity resolution', 'the role description · CubeSync']],
+    timeline: [['discovered', 'Found via hiring post', 'Nov 5'], ['draft', 'Draft waiting in Opportunities', 'Nov 5']], followup: null },
+];
+// Extra sample people so the network has some depth.
+const EXTRA = [['Kai Novak','Indie hacker','hackmap'],['Rina Das','OSS contributor','thesis'],['Theo Martin','Data engineer','cubesync'],['Ana Silva','CS student','hackmap'],['Ben Carter','Hackathon organiser','hackmap'],['Ines Duarte','Researcher','thesis'],['Yuki Sato','Backend engineer','cubesync'],['Noah Kim','Product manager','hackmap'],['Zara Ali','ML researcher','thesis'],['Leo Rossi','Startup founder','cubesync'],['Maya Cohen','Developer advocate','cubesync'],['Owen Park','PhD student','thesis'],['Sofia Lund','Designer','hackmap'],['Ravi Iyer','Staff engineer','cubesync'],['Chloe Bern','Recruiter','hackmap'],['Elias Berg','Professor','thesis']];
+const STATUSES = ['prospect','prospect','interacted','connected'];
+EXTRA.forEach(([name, role, project], i) => PEOPLE.push({
+  id: 'p' + i, name, role, org: '', status: STATUSES[i % 4], projects: [project], profiles: ['LinkedIn'],
+  source: 'Sample person for the prototype.', interests: [[PROJECTS[project].name + ' topics', 'sample']],
+  timeline: [['discovered', 'Discovered via a related post', 'Oct ' + (10 + i)]], followup: null,
+}));
+
+const EDGE = { prospect: 'proposed', interacted: 'interaction', connected: 'confirmed' };
+const LINKS = PEOPLE.filter(p => p.id !== 'me').map(p => ({ source: 'me', target: p.id, kind: EDGE[p.status] }));
+// Observed person-to-person relationships only, never inferred from shared interests.
+LINKS.push({ source: 'priya', target: 'omar', kind: 'confirmed', why: 'Same team at Lumen, per both profiles' });
+LINKS.push({ source: 'alex', target: 'lena', kind: 'confirmed', why: 'Connected on LinkedIn, per import' });
+
+const COLOR = { you: '#f5d0fe', connected: '#22d3ee', interacted: '#a78bfa', prospect: '#6b6694' };
+const EVENT = {
+  discovered: ['Discovered', '#6b6694'], draft: ['Draft waiting', '#fbbf24'], approved: ['Approved by you', '#a78bfa'],
+  sent: ['Sent', '#c4b5fd'], replied: ['Replied', '#f0abfc'], connected: ['Connected', '#22d3ee'],
+};
+
+const OPPS = [
+  { who: 'sam', match: 94, platform: 'LinkedIn', when: '1 day ago', channel: 'Public reply', project: 'thesis',
+    post: '"Has anyone applied our sparse-graph community detection method outside citation networks? Curious how it behaves on social data."',
+    why: 'You applied his method to 3 social graphs in chapter 3 and have a benchmark result to share.', evidence: ['thesis/ch3.tex', 'bench/results.md'],
+    draft: 'I applied it to three sparse social graphs for my thesis. It beat Louvain on modularity in 3 of 4 cases but struggled on very low-degree nodes. Happy to share the benchmark if useful.' },
+  { who: 'jordan', match: 88, platform: 'LinkedIn', when: '2 days ago', channel: 'Personal message', project: 'cubesync',
+    post: '"Hiring: engineer who has actually shipped entity resolution. Side projects count."',
+    why: 'CubeSync is an entity-resolution project with measured results, which is the exact requirement.', evidence: ['README.md', 'eval/results.csv'],
+    draft: 'Hi Jordan, saw your post. I built CubeSync, a local contact deduplication tool that keys on stable platform IDs. It removed all 37 false merges on a 4k-contact test set. Would that kind of work be relevant to the role?' },
+  { who: 'p0', match: 81, platform: 'X', when: '5 hours ago', channel: 'Demo link', project: 'hackmap',
+    post: '"Every hackathon I end up on a team of four backend devs. Why is there no decent team matcher?"',
+    why: 'HackMap balances skills across teams and has a live demo.', evidence: ['DEMO.md', 'app/match.ts'],
+    draft: 'Had the same problem, so I built HackMap. It balances skills across teams. 140 people used it at one event. Demo here if you want to try it: [link]' },
+  { who: 'p1', match: 76, platform: 'GitHub', when: '3 days ago', channel: 'Issue comment', project: 'thesis',
+    post: '"Modularity drops sharply on graphs with many isolated nodes. Is this expected?"',
+    why: 'You hit the same issue and documented a workaround in your bench notes.', evidence: ['bench/notes.md'],
+    draft: 'I ran into this too. Pruning degree-0 nodes before detection and reattaching after kept modularity stable in my runs. Repro script attached.' },
+];
+
+/* ---------------- Helpers ---------------- */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const byId = Object.fromEntries(PEOPLE.map(p => [p.id, p]));
+const initials = n => n.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let toastTimer, toastUndo;
+function toast(text, undo) {
+  $('#toast-text').textContent = text;
+  $('#toast-undo').hidden = !undo; toastUndo = undo;
+  $('#toast').classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 3800);
+}
+$('#toast-undo').onclick = () => { toastUndo?.(); $('#toast').classList.remove('show'); };
+
+// Cursor-following rim light on glass surfaces.
+document.addEventListener('pointermove', e => {
+  const el = e.target.closest?.('.lit'); if (!el) return;
+  const r = el.getBoundingClientRect();
+  el.style.setProperty('--mx', (e.clientX - r.left) + 'px'); el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+});
+
+/* ---------------- Navigation ---------------- */
+function go(screen) {
+  document.body.dataset.screen = screen;
+  $$('.screen').forEach(s => s.classList.toggle('on', s.dataset.screen === screen));
+  $$('.nav-btn').forEach(b => b.dataset.go === screen ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  if (screen !== 'network') closePerson();
+  setFreeFlight(false);
+}
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
+  const t = e.target.closest('[data-toast]'); if (t) toast(t.dataset.toast);
+});
+
+const STATES = [['running', 'Agent running'], ['paused', 'Paused · Mac was asleep'], ['catching', 'Catching up · 3 changes']];
+let statusIx = 0;
+$('#status').onclick = () => {
+  statusIx = (statusIx + 1) % STATES.length;
+  document.body.dataset.status = STATES[statusIx][0]; $('#status-text').textContent = STATES[statusIx][1];
+};
+
+/* ---------------- Opportunities ---------------- */
+// Approval belongs to one draft revision: editing an approved draft sends it back to review.
+function nextState(state, event) {
+  if (event === 'approve') return 'approved';
+  if (event === 'edit') return state === 'approved' ? 'review' : state;
+  if (event === 'dismiss') return 'dismissed';
+  if (event === 'restore') return 'new';
+  return state;
+}
+console.assert(nextState('approved', 'edit') === 'review', 'edit must clear approval');
+console.assert(nextState('new', 'edit') === 'new', 'editing a new draft keeps it new');
+console.assert(nextState('review', 'approve') === 'approved', 're-approve works');
+
+const BADGE = { new: ['New', ''], review: ['Edited · needs review', 'warn'], approved: ['Approved · not sent', 'ok'] };
+let oppFilter = 'all';
+function renderOpps() {
+  $('#opp-filter').innerHTML = [['all', 'All'], ...Object.entries(PROJECTS).map(([k, p]) => [k, p.name])]
+    .map(([k, n]) => `<button class="chip" aria-pressed="${oppFilter === k}" data-of="${k}">${n}</button>`).join('');
+  $('#opp-list').innerHTML = OPPS.map((o, i) => {
+    o.state ??= 'new';
+    const p = byId[o.who], [label, tone] = BADGE[o.state] || BADGE.new;
+    const hidden = o.state === 'dismissed' || (oppFilter !== 'all' && o.project !== oppFilter);
+    return `<article class="card opp lit ${hidden ? 'dismissed' : ''}" data-i="${i}">
+      <div class="row"><div class="avatar">${initials(p.name)}</div><div><b>${esc(p.name)}</b><div class="muted">${o.platform} · ${esc(p.role)} · ${o.when}</div></div><span class="score">${o.match}%</span></div>
+      <div class="post">${esc(o.post)}</div>
+      <div class="why"><strong>Why you:</strong> ${esc(o.why)}</div>
+      <div class="chips">${o.evidence.map(e => `<span class="chip">${esc(e)}</span>`).join('')}<span class="chip">${o.channel}</span></div>
+      <textarea aria-label="Draft for ${esc(p.name)}" data-edit="${i}">${esc(o.draft)}</textarea>
+      <div class="opp-actions"><span class="badge ${tone}" style="margin-right:auto">${label}</span>
+        <button class="btn ghost" data-dismiss="${i}">Dismiss</button>
+        <button class="btn" data-person="${p.id}">View person</button>
+        <button class="btn primary" data-approve="${i}" ${o.state === 'approved' ? 'hidden' : ''}>Approve</button></div>
+    </article>`;
+  }).join('');
+  $('#opp-count').textContent = OPPS.filter(o => o.state === 'new' || o.state === 'review').length;
+}
+$('#opp-list').addEventListener('click', e => {
+  const a = e.target.closest('[data-approve]'), d = e.target.closest('[data-dismiss]'), v = e.target.closest('[data-person]');
+  if (a) { const o = OPPS[a.dataset.approve]; o.state = nextState(o.state, 'approve'); renderOpps(); toast('Approved this version. Nothing is sent until you press Send.'); }
+  if (d) { const o = OPPS[d.dataset.dismiss], prev = o.state; o.state = nextState(o.state, 'dismiss'); renderOpps(); toast('Opportunity dismissed', () => { o.state = prev; renderOpps(); }); }
+  if (v) { go('network'); openPerson(byId[v.dataset.person], true); }
+});
+$('#opp-list').addEventListener('input', e => {
+  const i = e.target.dataset.edit; if (i == null) return;
+  const o = OPPS[i]; o.draft = e.target.value;
+  const next = nextState(o.state, 'edit');
+  if (next !== o.state) { o.state = next; const card = e.target.closest('.opp'), [l, t] = BADGE[next];
+    const b = card.querySelector('.badge'); b.textContent = l; b.className = 'badge ' + t; card.querySelector('[data-approve]').hidden = false; }
+});
+$('#opp-filter').addEventListener('click', e => { const c = e.target.closest('[data-of]'); if (c) { oppFilter = c.dataset.of; renderOpps(); } });
+renderOpps();
+
+/* ---------------- Posts ---------------- */
+let platform = 'li';
+function renderPost() {
+  const t = $('#post-text').value, limit = platform === 'x' ? 280 : 3000;
+  $('#pv-text').textContent = t; $('#preview').classList.toggle('x', platform === 'x');
+  $('#pv-meta').textContent = platform === 'x' ? '@you · now' : 'CS student · now';
+  $('#post-count').textContent = `${t.length} / ${limit}`; $('#post-count').classList.toggle('over-limit', t.length > limit);
+}
+$('#post-text').addEventListener('input', renderPost);
+$$('[data-platform]').forEach(b => b.onclick = () => { platform = b.dataset.platform; $$('[data-platform]').forEach(x => x.setAttribute('aria-pressed', x === b)); renderPost(); });
+renderPost();
+
+/* ---------------- Projects and privacy ---------------- */
+$('#project-list').innerHTML = Object.entries(PROJECTS).map(([k, p]) => `
+  <article class="card lit">
+    <div class="row"><h3 style="margin:0">${p.name}</h3><span class="badge ${p.scanning ? '' : 'ok'}" style="margin-left:auto">${p.scanning ? 'Scanning changes' : 'Up to date'}</span></div>
+    ${p.scanning ? '<div class="scan"><i></i></div>' : ''}
+    <p class="muted" style="margin:10px 0">${p.summary}</p>
+    <div class="list" style="gap:6px;font-size:13px"><div><b style="font-weight:500">Your part:</b> <span style="color:var(--t2)">${p.contribution}</span></div><div><b style="font-weight:500">Result:</b> <span style="color:var(--t2)">${p.result}</span></div></div>
+    <div class="chips" style="margin:12px 0">${p.evidence.map(e => `<span class="chip">${e}</span>`).join('')}</div>
+    ${p.question ? `<div class="q"><span class="grow">${p.question}</span><button class="btn" data-toast="Answer saved to the project record.">Answer</button></div>` : ''}
+  </article>`).join('') + `<button class="drop" id="drop"><div><b>Add a project folder</b><div class="muted">Drop a folder here or click to choose</div></div></button>`;
+const drop = $('#drop');
+drop.onclick = () => toast('Design prototype: folder access is not connected.');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); if (ev === 'drop') drop.onclick(); }));
+
+$('#perm-list').innerHTML = Object.values(PROJECTS).map((p, i) => `
+  <div class="item"><div class="grow"><b>${p.name}</b><div class="chips" style="margin-top:6px"><span class="chip">Excludes .env</span><span class="chip">node_modules</span><span class="chip">build/</span></div></div>
+  <label class="switch" title="Allow AI processing"><input type="checkbox" ${i < 2 ? 'checked' : ''} aria-label="Allow AI processing for ${p.name}"><span></span></label></div>`).join('');
+
+/* ---------------- Person panel ---------------- */
+function openPerson(p, fly) {
+  if (!p || p.id === 'me') return;
+  const linksOut = LINKS.filter(l => l.why && [l.source.id ?? l.source, l.target.id ?? l.target].includes(p.id));
+  $('#person-body').innerHTML = `
+    <div class="row" style="padding-right:40px"><div class="avatar lg">${initials(p.name)}</div><div><h2 style="font-size:20px">${esc(p.name)}</h2><div class="muted">${esc(p.role)}${p.org ? ' · ' + esc(p.org) : ''}</div></div></div>
+    <div class="chips" style="margin-top:14px">${p.profiles.map(x => `<span class="chip">${x}</span>`).join('')}<span class="badge ${p.status === 'connected' ? 'ok' : p.status === 'prospect' ? 'dim' : ''}">${p.status === 'prospect' ? 'Not contacted' : p.status === 'interacted' ? 'In conversation' : 'Connected'}</span></div>
+    <div class="panel-section"><h3>How you found them</h3><p style="font-size:13.5px;color:var(--t2)">${esc(p.source)}</p></div>
+    <div class="panel-section"><h3>Shared interests</h3><div class="list">${p.interests.map(([t, ev]) => `<div class="item" style="padding:9px 12px"><div class="grow"><b style="font-weight:500">${esc(t)}</b><div class="muted">Evidence: ${esc(ev)}</div></div></div>`).join('')}</div></div>
+    <div class="panel-section"><h3>Projects</h3><div class="chips">${p.projects.map(k => `<span class="chip">${PROJECTS[k].name}</span>`).join('')}</div></div>
+    ${linksOut.length ? `<div class="panel-section"><h3>Known connections</h3><div class="list">${linksOut.map(l => { const o = byId[(l.source.id ?? l.source) === p.id ? (l.target.id ?? l.target) : (l.source.id ?? l.source)]; return `<div class="muted">${esc(o.name)}: ${esc(l.why)}</div>`; }).join('')}</div></div>` : ''}
+    <div class="panel-section"><h3>History</h3><div class="timeline">${p.timeline.map(([k, text, d]) => `<div class="tl" style="--c:${EVENT[k][1]}"><b>${EVENT[k][0]}</b> <span class="muted">· ${d}</span><div class="muted">${esc(text)}</div></div>`).join('')}</div></div>
+    ${p.followup ? `<div class="panel-section"><h3>Next follow-up</h3><div class="followup">${esc(p.followup)}</div></div>` : ''}
+    <div class="opp-actions" style="margin-top:22px"><button class="btn" data-toast="Note saved.">Add note</button><button class="btn primary" data-toast="A follow-up draft will appear in Opportunities.">Draft follow-up</button></div>`;
+  $('#person').classList.add('open'); $('#person').setAttribute('aria-hidden', 'false');
+  selected = p.id; graph && refreshHalos();
+  if (fly) flyTo(p);
+}
+function closePerson() { $('#person').classList.remove('open'); $('#person').setAttribute('aria-hidden', 'true'); selected = null; graph && refreshHalos(); }
+$('#person-close').onclick = closePerson;
+
+/* ---------------- Command palette ---------------- */
+const SCREENS = [['home', 'Home'], ['opps', 'Opportunities'], ['posts', 'Posts'], ['network', 'Network'], ['projects', 'Projects'], ['privacy', 'Privacy']];
+let palItems = [], palIx = 0;
+function renderPalette() {
+  const q = $('#pal-input').value.toLowerCase();
+  palItems = [...SCREENS.map(([id, n]) => ({ n, kind: 'Screen', run: () => go(id) })),
+    ...PEOPLE.filter(p => p.id !== 'me').map(p => ({ n: p.name, kind: p.role, run: () => { go('network'); openPerson(p, true); } }))]
+    .filter(i => i.n.toLowerCase().includes(q)).slice(0, 9);
+  palIx = Math.min(palIx, Math.max(0, palItems.length - 1));
+  $('#pal-list').innerHTML = palItems.map((it, i) => `<li role="option" aria-selected="${i === palIx}" data-pi="${i}">${esc(it.n)}<span class="muted">${esc(it.kind)}</span></li>`).join('') || '<li class="muted">No matches</li>';
+}
+function openPalette() { $('#palette').classList.add('open'); $('#pal-input').value = ''; palIx = 0; renderPalette(); $('#pal-input').focus(); }
+function closePalette() { $('#palette').classList.remove('open'); }
+$('#open-palette').onclick = openPalette;
+$('#pal-input').addEventListener('input', () => { palIx = 0; renderPalette(); });
+$('#pal-list').addEventListener('click', e => { const li = e.target.closest('[data-pi]'); if (li) { closePalette(); palItems[li.dataset.pi].run(); } });
+$('#palette').addEventListener('click', e => { if (e.target.id === 'palette') closePalette(); });
+$('#pal-input').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); palIx = (palIx + (e.key === 'ArrowDown' ? 1 : -1) + palItems.length) % palItems.length; renderPalette(); }
+  if (e.key === 'Enter' && palItems[palIx]) { closePalette(); palItems[palIx].run(); }
+});
+
+/* ---------------- Keyboard ---------------- */
+const keys = new Set();
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#palette').classList.contains('open') ? closePalette() : openPalette(); return; }
+  if (e.key === 'Escape') { if ($('#palette').classList.contains('open')) closePalette(); else if (freeFlight) setFreeFlight(false); else closePerson(); return; }
+  if (e.target.matches?.('input, textarea')) return;
+  if (e.key.toLowerCase() === 'f' && document.body.dataset.screen === 'network') setFreeFlight(!freeFlight);
+  keys.add(e.key.toLowerCase());
+});
+document.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => keys.clear());
+
+/* ---------------- 3D network ---------------- */
+let graph, THREE, selected = null, freeFlight = false, filter = 'all';
+const HINT = $('#hint').innerHTML;
+function setFreeFlight(on) {
+  freeFlight = on;
+  $('#hint').classList.toggle('fly', on);
+  $('#hint').innerHTML = on ? '<span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span><span><kbd>Q</kbd><kbd>E</kbd> down / up</span><span><kbd>Shift</kbd> boost</span><span>Drag to look</span><span><kbd>Esc</kbd> exit</span>' : HINT;
+  if (graph) graph.controls().autoRotate = !on && !reduceMotion;
+}
+
+$('#net-filter').innerHTML = [['all', 'Everyone'], ...Object.entries(PROJECTS).map(([k, p]) => [k, p.name])]
+  .map(([k, n]) => `<button class="chip" aria-pressed="${k === 'all'}" data-nf="${k}">${n}</button>`).join('');
+$('#net-filter').addEventListener('click', e => {
+  const c = e.target.closest('[data-nf]'); if (!c) return;
+  filter = c.dataset.nf; $$('[data-nf]').forEach(b => b.setAttribute('aria-pressed', b === c));
+  PEOPLE.forEach(p => { const on = filter === 'all' || p.projects.includes(filter); p.__mats?.forEach(([m, base]) => m.opacity = on ? base : base * .12); });
+  graph?.linkVisibility(graph.linkVisibility());
+});
+const visible = p => filter === 'all' || p.projects.includes(filter);
+
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(.25, 'rgba(255,255,255,.45)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+function refreshHalos() {
+  PEOPLE.forEach(p => p.__halo?.scale.setScalar(p.__r * (p.id === selected ? 9 : 5)));
+}
+function flyTo(p) {
+  if (!graph || p.x == null) return;
+  const d = 110, h = Math.hypot(p.x, p.y, p.z) || 1, r = 1 + d / h;
+  graph.cameraPosition({ x: p.x * r, y: p.y * r, z: p.z * r }, p, reduceMotion ? 0 : 1600);
+}
+
+async function initGraph() {
+  let ForceGraph3D, SpriteText;
+  try {
+    [THREE, { default: ForceGraph3D }, { default: SpriteText }] = await Promise.all([
+      import('https://esm.sh/three@0.181.0'),
+      import('https://esm.sh/3d-force-graph@1.80.0?deps=three@0.181.0'),
+      import('https://esm.sh/three-spritetext@1.10.0?deps=three@0.181.0'),
+    ]);
+  } catch (err) {
+    console.error(err);
+    $('#scene').innerHTML = '<div class="scene-fallback">The 3D view needs an internet connection to load its library.</div>';
+    return;
+  }
+  const glow = glowTexture();
+  const me = byId.me; me.fx = me.fy = me.fz = 0;
+  graph = new ForceGraph3D($('#scene'), { controlType: 'orbit' })
+    .backgroundColor('rgba(0,0,0,0)')
+    .showNavInfo(false)
+    .graphData({ nodes: PEOPLE, links: LINKS })
+    .nodeLabel(p => p.id === 'me' ? '' : `${esc(p.name)} · ${esc(p.role)}`)
+    .nodeThreeObject(p => {
+      const color = COLOR[p.status], r = p.__r = { you: 9, connected: 6, interacted: 5, prospect: 3.6 }[p.status];
+      const group = new THREE.Group();
+      const mat = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: .55, roughness: .15, metalness: .1, clearcoat: 1, transparent: true, opacity: .95 });
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(r, 32, 24), mat));
+      const haloMat = new THREE.SpriteMaterial({ map: glow, color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: p.status === 'prospect' ? .35 : .7 });
+      const halo = p.__halo = new THREE.Sprite(haloMat); halo.scale.setScalar(r * 5); group.add(halo);
+      const label = new SpriteText(p.id === 'me' ? 'You' : p.name.split(' ')[0], p.id === 'me' ? 4.2 : 3, 'rgba(255,255,255,.9)');
+      label.fontFace = 'Inter, sans-serif'; label.fontWeight = '500'; label.position.y = -(r + 4.5); label.material.depthWrite = false; group.add(label);
+      p.__mats = [[mat, mat.opacity], [haloMat, haloMat.opacity], [label.material, 1]];
+      return group;
+    })
+    .linkColor(l => ({ proposed: '#6b6694', interaction: '#a78bfa', confirmed: '#22d3ee' }[l.kind]))
+    .linkWidth(l => ({ proposed: 0, interaction: .8, confirmed: 1.4 }[l.kind]))
+    .linkOpacity(.55)
+    .linkVisibility(l => visible(l.source.id ? l.source : byId[l.source]) && visible(l.target.id ? l.target : byId[l.target]))
+    .linkDirectionalParticles(l => l.kind === 'confirmed' ? 3 : l.kind === 'interaction' ? 1 : 0)
+    .linkDirectionalParticleWidth(1.8)
+    .linkDirectionalParticleSpeed(.005)
+    .linkDirectionalParticleColor(() => '#e0f2fe')
+    .onNodeHover(p => $('#scene').style.cursor = p && p.id !== 'me' ? 'pointer' : null)
+    .onNodeClick(p => p.id === 'me' ? flyTo(p) : openPerson(p, true))
+    .onBackgroundClick(closePerson);
+
+  // Stronger relationships sit closer to you.
+  graph.d3Force('link').distance(l => ({ confirmed: 45, interaction: 75, proposed: 110 }[l.kind]));
+  graph.d3Force('charge').strength(-110);
+  graph.scene().fog = new THREE.FogExp2(0x0b0819, .0019);
+  graph.cameraPosition({ x: 0, y: 40, z: 290 });
+
+  const controls = graph.controls();
+  controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = .5; controls.enableDamping = true;
+  let idle;
+  controls.addEventListener('start', () => { clearTimeout(idle); controls.autoRotate = false; });
+  controls.addEventListener('end', () => { clearTimeout(idle); idle = setTimeout(() => controls.autoRotate = !freeFlight && !reduceMotion, 6000); });
+
+  // Free flight: WASD moves camera and orbit target together, so mouse drag still looks around.
+  const fwd = new THREE.Vector3(), right = new THREE.Vector3(), step = new THREE.Vector3();
+  (function loop() {
+    requestAnimationFrame(loop);
+    if (!freeFlight || !keys.size) return;
+    const cam = graph.camera(), speed = keys.has('shift') ? 5 : 1.8;
+    fwd.subVectors(controls.target, cam.position).normalize();
+    right.crossVectors(fwd, cam.up).normalize();
+    step.set(0, 0, 0);
+    if (keys.has('w') || keys.has('arrowup')) step.add(fwd);
+    if (keys.has('s') || keys.has('arrowdown')) step.sub(fwd);
+    if (keys.has('d') || keys.has('arrowright')) step.add(right);
+    if (keys.has('a') || keys.has('arrowleft')) step.sub(right);
+    if (keys.has('e')) step.add(cam.up);
+    if (keys.has('q')) step.sub(cam.up);
+    if (!step.lengthSq()) return;
+    step.normalize().multiplyScalar(speed);
+    cam.position.add(step); controls.target.add(step);
+  })();
+
+  addEventListener('resize', () => graph.width(innerWidth).height(innerHeight));
+}
+
+go('network');
+initGraph();
+</script>
+</body>
+</html>
