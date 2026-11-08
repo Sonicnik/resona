@@ -16,6 +16,8 @@ export default defineConfig(() => ({
   server: {
     port: 1420,
     strictPort: true,
+    // The backend checks Origin, so it must list http://localhost:1420 (its default).
+    proxy: { "/api": { target: "http://127.0.0.1:4317", changeOrigin: true } },
     host: host || false,
     hmr: host
       ? {

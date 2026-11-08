@@ -41,7 +41,7 @@ Requests and responses are JSON. Timestamps are ISO 8601 strings in UTC.
 Returns `{ "ok": true }`.
 
 ### `GET /status`
-Returns AI availability and model, storage paths, record counts, scheduler jobs (including `resumedAfterPauseAt` after sleep), and connector status.
+Returns the agent state (`agent.state`: `running`, `paused` or `catching_up`), AI availability and model, storage paths, record counts, scheduler jobs (including `resumedAfterPauseAt` after sleep), and connector status.
 
 ### `GET /settings` · `PATCH /settings`
 These settings can be read and changed:
@@ -52,8 +52,15 @@ These settings can be read and changed:
 | `schedule.weeklyReview.enabled` | `true` | Generate a weekly review every 7 days. |
 | `schedule.vaultSync.enabled` | `true` | Sync the Markdown vault every 10 minutes. |
 | `ai.disabled` | `false` | Turn off all model calls (offline mode). |
+| `agent.paused` | `false` | Global pause: scheduled jobs and the folder watcher stop. On resume, each overdue job runs once. |
 
 `PATCH` takes a partial object and rejects unknown keys.
+
+### Credentials: `GET /credentials` · `PUT /credentials/:name` · `DELETE /credentials/:name`
+`:name` is `anthropic`, `github` or `x`. The app's **Connect** flow opens the provider's key page in the browser; the user pastes the key once. `PUT` takes `{ value }`, verifies an Anthropic key with a model-list call (400 `invalid_credential` if rejected), stores it in the **macOS login Keychain** (service `Resona`) and applies it without a restart. Responses are `{ name, connected, hint: "…abcd" }`: values are never returned, logged, or written to the database, vault or repository. Stored keys load at startup unless the environment already sets them. Anthropic does not allow third-party apps to offer Claude-account login, so this is an API key, not OAuth.
+
+### `POST /system/choose`
+Body: `{ kind: "folder"|"file", prompt? }`. Opens a native Finder dialog on this Mac (`osascript`) and returns `{ path }`, or `{ path: null }` if cancelled. Browsers hide real file paths, so the app uses this to add folders and import archives.
 
 ### `GET /jobs` · `POST /jobs/:name/run`
 `GET /jobs` lists the background jobs with their last run and next due time. `POST /jobs/:name/run` runs one job now. The jobs are `rescan-folders`, `summarize-pending`, `discovery`, `suggest-followups`, `weekly-review` and `vault-sync`.
@@ -226,6 +233,7 @@ An approved draft, a sent message, a received reply and an accepted connection s
 | DELETE | `/profiles/:id` | | |
 | POST | `/people/:id/merge` | `{ mergeId }` | Moves profiles, relationships, interactions, opportunities, drafts and follow-ups onto `:id`. Leaves a `mergedInto` pointer. |
 | GET | `/people/:id/paths?k=3&maxHops=4` | | Warm-introduction paths (see Network). |
+| POST | `/people/:id/drafts` | `{ useAi?, channel?, reason? }` | Follow-up draft to someone already in your network (no opportunity), grounded in the last interactions, the open follow-up reason and the most recently linked project. Same approval flow as other drafts. |
 
 **Person detail** (`GET /people/:id`) returns everything the app shows when a person is selected:
 `person`, `profiles`, `metrics` (tie strength, PageRank, bridge score, community, counts), `connectionStatus` (`approvedDrafts`, `sentByYou`, `repliesReceived`, `platformConnections`, `follows`, each reported separately), `discoveredVia` (source posts), `projects` (with evidence), `sharedInterests` (shared project keywords and semantic similarity, with `establishedBy`), `interactions`, `opportunities`, `drafts`, `followups`, `relationships` (with verification source) and `vaultMentions`.

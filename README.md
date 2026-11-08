@@ -2,7 +2,25 @@
 
 A local-first AI networking app for Mac that turns your projects into personalized outreach, social post drafts, and a visual professional network.
 
-**Status:** A first local backend exists in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API); see the [API reference](backend/docs/api-reference.md). The Mac app UI and authorized LinkedIn access are not yet implemented.
+**Status:** First prototype. The local backend in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API; see the [API reference](backend/docs/api-reference.md)) is wired to the glass "star map" UI in [`app/`](app/) (React + Vite, ported from [`design/prototype.html`](design/prototype.html)). It runs in the browser for now; the Tauri window and authorized LinkedIn access are not yet implemented.
+
+## Run the prototype
+
+Needs Node 22.13+. Two terminals:
+
+```bash
+cd backend && npm install && npm run demo
+```
+
+```bash
+cd backend && npm run seed
+```
+
+```bash
+cd app && npm install && npm run dev
+```
+
+Open http://localhost:1420. `npm run demo` keeps demo data in `~/.resona-demo` (delete it to reset); use `npm start` for your real data. To turn on AI, open **Privacy → Claude → Connect**: it opens the Anthropic key page in your browser, and the key you paste is stored in your macOS Keychain, never in this repository.
 
 ## How it works
 
