@@ -197,3 +197,30 @@ test("follow-up drafts: template offline, AI when the folder allows it, same app
     }
   }
 });
+
+test("posts: write your own, edit title and text, approve, mark posted", async () => {
+  const s = makeServices();
+  const folder = tmpDir("proj-");
+  writeFiles(folder, SAMPLE_PROJECT);
+  const project = s.projects.create({ folderPath: folder, aiPermission: "denied" }); // never summarized: own posts don't need it
+  const { call, close } = await serve(s);
+  try {
+    assert.equal((await call("POST", `/projects/${project.id}/post-drafts`, { platform: "linkedin", text: "   " })).status, 400);
+    const created = await call("POST", `/projects/${project.id}/post-drafts`, { platform: "linkedin", title: "My take", text: "We cut eval time in half." });
+    assert.equal(created.status, 201, created.text);
+    assert.equal(created.json.kind, "post");
+    assert.equal(created.json.revision.author, "user");
+    assert.equal(created.json.revision.title, "My take");
+
+    const edited = await call("POST", `/drafts/${created.json.id}/revisions`, { title: "My honest take", body: "We cut eval time in half. Here is how." });
+    assert.equal(edited.json.currentRevision, 2);
+    assert.equal(edited.json.revision.title, "My honest take");
+
+    const action = await call("POST", `/drafts/${created.json.id}/actions`, { destination: "linkedin feed" });
+    assert.equal((await call("POST", `/actions/${action.json.id}/approve`, { revision: 2 })).json.state, "approved");
+    assert.equal((await call("POST", `/actions/${action.json.id}/mark-sent`, {})).json.action.state, "sent");
+  } finally {
+    await close();
+    s.close();
+  }
+});

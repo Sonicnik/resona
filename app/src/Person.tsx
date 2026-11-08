@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, CHANNEL, initials, platformName, shortDate, useApi, useCtx } from "./api";
+import { OpenPost } from "./screens/Opportunities";
 
 const EVENT: Record<string, [string, string]> = {
   discovered: ["Discovered", "#6b6694"],
@@ -72,6 +73,7 @@ export function Person({ id, names, onClose, onDraftedFollowup }: { id: string |
             <p style={{ color: "var(--t2)" }}>
               {cur.discoveredVia[0] ? `“${String(cur.discoveredVia[0].text).slice(0, 180)}”` : cur.profiles[0]?.source === "linkedin_archive" ? "Imported from your LinkedIn archive." : "Added by you."}
             </p>
+            {cur.discoveredVia[0] && <div style={{ marginTop: 8 }}><OpenPost url={cur.discoveredVia[0].url} platform={cur.discoveredVia[0].platform} /></div>}
           </div>
 
           {cur.sharedInterests.length > 0 && (

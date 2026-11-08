@@ -2,6 +2,16 @@ import { useState } from "react";
 import { ago, api, CHANNEL, initials, platformName, shortDate, useApi, useCtx } from "../api";
 import { DraftEditor } from "../DraftEditor";
 
+/** Opens the original post or comment on its platform, e.g. "Open on LinkedIn ↗". */
+export function OpenPost({ url, platform, className = "btn" }: { url?: string | null; platform?: string; className?: string }) {
+  if (!url) return null;
+  return (
+    <a className={className} href={url} target="_blank" rel="noreferrer" title={url}>
+      Open on {platformName(platform) || "the web"} ↗
+    </a>
+  );
+}
+
 /** Where to paste a reply: the post itself for public replies, otherwise the person's profile. */
 const openUrlFor = (opp: any) => opp.post?.url ?? null;
 
@@ -20,6 +30,7 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
     <>
       <button className="btn ghost" onClick={dismiss}>Dismiss</button>
       {opp.personId && <button className="btn" onClick={() => openPerson(opp.personId, true)}>View Person</button>}
+      <OpenPost url={opp.post?.url} platform={opp.post?.platform} />
     </>
   );
   return (
@@ -39,7 +50,6 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
         <div title={opp.situation?.source === "ai" ? "Summarized by AI" : "Key sentence from the post"}>{opp.situation?.gist ?? opp.post?.text}</div>
       </div>
       <div className="sit-links">
-        {opp.post?.url && <a href={opp.post.url} target="_blank" rel="noreferrer">Open on {platformName(opp.post.platform) || "the web"} ↗</a>}
         <details>
           <summary>Full text</summary>
           <div className="full-text">{opp.post?.text}</div>

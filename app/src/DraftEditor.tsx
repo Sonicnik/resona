@@ -27,6 +27,8 @@ export function DraftEditor(props: {
   limit?: number;
   rows?: number;
   label: string;
+  /** Show an editable title above the text (posts). */
+  editTitle?: boolean;
   onText?: (text: string) => void;
   left?: ReactNode;
   children?: ReactNode;
@@ -35,31 +37,56 @@ export function DraftEditor(props: {
   const { act, bump, notify } = useCtx();
   const [text, setText] = useState<string>(draft.revision?.body ?? "");
   const latest = useRef(text); // the debounced save must read the newest text, not a stale render's
+  const [title, setTitle] = useState<string>(draft.revision?.title ?? "");
+  const latestTitle = useRef(title);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "empty" | "error">("idle");
   const dirty = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const saving = useRef<Promise<any> | null>(null);
 
   useEffect(() => {
-    if (!dirty.current) setText((latest.current = draft.revision?.body ?? ""));
-  }, [draft.revision?.body]);
+    if (dirty.current) return;
+    setText((latest.current = draft.revision?.body ?? ""));
+    setTitle((latestTitle.current = draft.revision?.title ?? ""));
+  }, [draft.revision?.body, draft.revision?.title]);
   useEffect(() => props.onText?.(text), [text]);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const save = async (): Promise<any> => {
     clearTimeout(timer.current);
     if (!dirty.current) return saving.current ?? draft;
+    if (!latest.current.trim()) {
+      setSaveState("empty"); // the text can't be saved empty; keep it dirty until there is something to save
+      throw new Error("Write something before saving or approving.");
+    }
     dirty.current = false;
-    const body = latest.current;
-    saving.current = api("POST", `/drafts/${draft.id}/revisions`, { body }).finally(() => (saving.current = null));
-    const saved = await saving.current;
-    bump();
-    return saved;
+    setSaveState("saving");
+    const payload = props.editTitle ? { body: latest.current, title: latestTitle.current.trim() || null } : { body: latest.current };
+    saving.current = api("POST", `/drafts/${draft.id}/revisions`, payload).finally(() => (saving.current = null));
+    try {
+      const saved = await saving.current;
+      setSaveState(dirty.current ? "idle" : "saved");
+      bump();
+      return saved;
+    } catch (e) {
+      dirty.current = true;
+      setSaveState("error");
+      throw e;
+    }
+  };
+  const schedule = () => {
+    dirty.current = true;
+    setSaveState("idle");
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void save().catch((e) => notify(e.message)), 800);
   };
   const onEdit = (v: string) => {
     setText((latest.current = v));
-    dirty.current = true;
-    clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void save().catch((e) => notify(e.message)), 800);
+    schedule();
+  };
+  const onEditTitle = (v: string) => {
+    setTitle((latestTitle.current = v));
+    schedule();
   };
 
   const last = latestAction(draft);
@@ -91,11 +118,17 @@ export function DraftEditor(props: {
 
   return (
     <>
-      <textarea aria-label={props.label} rows={props.rows ?? 5} value={text} readOnly={sent} onChange={(e) => onEdit(e.target.value)} onBlur={() => void save().catch(() => {})} />
+      {props.editTitle && (
+        <input className="field title-field" aria-label={`${props.label} title`} placeholder="Title (optional, for your own reference)" value={title} readOnly={sent}
+          onChange={(e) => onEditTitle(e.target.value)} onBlur={() => void save().catch(() => {})} />
+      )}
+      <textarea aria-label={props.label} rows={Math.min(24, Math.max(props.rows ?? 5, text.split("\n").length + 1))} value={text} readOnly={sent}
+        onChange={(e) => onEdit(e.target.value)} onBlur={() => void save().catch(() => {})} />
       {props.children}
       <div className="opp-actions">
-        <span className={`badge ${tone}`} style={{ marginRight: "auto" }}>
-          {label}
+        <span className={`badge ${tone}`}>{label}</span>
+        <span className={`muted save-state ${saveState === "empty" || saveState === "error" ? "over-limit" : ""}`} aria-live="polite" style={{ marginRight: "auto" }}>
+          {sent ? "" : { idle: dirty.current ? "Unsaved changes" : "Edit freely: changes save automatically", saving: "Saving…", saved: "All changes saved", empty: "Text can't be empty", error: "Couldn't save. Keep typing to retry." }[saveState]}
         </span>
         {props.limit && <span className={`muted ${text.length > props.limit ? "over-limit" : ""}`}>{text.length} / {props.limit}</span>}
         {props.left}

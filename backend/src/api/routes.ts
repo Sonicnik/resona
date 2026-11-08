@@ -333,7 +333,15 @@ export function apiRouter(s: Services): Router {
 
   r.post("/projects/:id/post-drafts", async (req, res) => {
     const input = body(
-      z.object({ platform: z.enum(["linkedin", "x"]), angle: z.string().optional(), useAi: z.boolean().optional(), force: z.boolean().optional() }),
+      z.object({
+        platform: z.enum(["linkedin", "x"]),
+        angle: z.string().optional(),
+        useAi: z.boolean().optional(),
+        force: z.boolean().optional(),
+        // Your own post text: saved as a user draft instead of generating one.
+        text: z.string().trim().min(1).max(5000).optional(),
+        title: z.string().max(200).nullish(),
+      }),
       req,
     );
     res.status(201).json(await s.drafts.createPostDraft(param(req, "id"), input));

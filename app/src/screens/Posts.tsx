@@ -14,13 +14,16 @@ export function Posts({ platform, projectHint }: { platform: "linkedin" | "x"; p
   const [declined, setDeclined] = useState<{ projectId: string; reason: string } | null>(null);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [own, setOwn] = useState({ title: "", text: "" });
 
   useEffect(() => {
     if (projectHint) setProjectId(projectHint);
   }, [projectHint]);
-  const pid = projectId || projects.data?.[0]?.id || "";
   const list = (drafts.data ?? []).filter((d) => d.platform === platform && d.status === "active");
   const draft = list.find((d) => d.id === selected) ?? list[0];
+  // Until you pick one, the project follows the draft on screen so the two never disagree.
+  const pid = projectId || draft?.projectId || projects.data?.[0]?.id || "";
 
   const create = async (force = false) => {
     setBusy(true);
@@ -37,6 +40,17 @@ export function Posts({ platform, projectHint }: { platform: "linkedin" | "x"; p
       setBusy(false);
     }
   };
+  const saveOwn = () =>
+    act(
+      () => api("POST", `/projects/${pid}/post-drafts`, { platform, title: own.title.trim() || null, text: own.text }),
+      (d: any) => {
+        setSelected(d.id);
+        setComposing(false);
+        setOwn({ title: "", text: "" });
+        return "Saved as your draft. Approve it when you're ready.";
+      },
+    );
+  const limit = platform === "x" ? 280 : 3000;
   const notWorth = () =>
     act(() => api("DELETE", `/drafts/${draft.id}`), () => {
       setSelected(null);
@@ -53,6 +67,7 @@ export function Posts({ platform, projectHint }: { platform: "linkedin" | "x"; p
           ))}
         </select>
         <button className="btn primary" disabled={!pid || busy} onClick={() => create()}>{busy ? "Drafting…" : "Draft Post"}</button>
+        <button className="btn" aria-pressed={composing} disabled={!pid} onClick={() => setComposing(!composing)}>Write My Own</button>
         {list.length > 1 &&
           list.map((d) => (
             <button key={d.id} className="chip" aria-pressed={d.id === draft?.id} style={d.id === draft?.id ? { borderColor: "var(--accent-hi)" } : undefined} onClick={() => setSelected(d.id)}>
@@ -60,6 +75,18 @@ export function Posts({ platform, projectHint }: { platform: "linkedin" | "x"; p
             </button>
           ))}
       </div>
+      {composing && (
+        <div className="card form" style={{ marginBottom: 14 }}>
+          <h3>Write your own {platform === "x" ? "X" : "LinkedIn"} post about {projectName(pid)}</h3>
+          <input className="field" placeholder="Title (optional, for your own reference)" value={own.title} onChange={(e) => setOwn({ ...own, title: e.target.value })} aria-label="Your post title" />
+          <textarea autoFocus rows={8} placeholder="Write your post…" value={own.text} onChange={(e) => setOwn({ ...own, text: e.target.value })} aria-label="Your post text" />
+          <div className="opp-actions">
+            <span className={`muted ${own.text.length > limit ? "over-limit" : ""}`} style={{ marginRight: "auto" }}>{own.text.length} / {limit}</span>
+            <button className="btn ghost" onClick={() => setComposing(false)}>Cancel</button>
+            <button className="btn primary" disabled={!own.text.trim()} onClick={saveOwn}>Save Draft</button>
+          </div>
+        </div>
+      )}
       {declined && declined.projectId === pid && (
         <div className="q" style={{ marginBottom: 14 }}>
           <span className="grow">Not worth posting yet: {declined.reason}</span>
@@ -72,24 +99,32 @@ export function Posts({ platform, projectHint }: { platform: "linkedin" | "x"; p
         <div className="grid cols-2">
           <div className="card">
             <div className="row" style={{ marginBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>{draft.revision?.title || "Post draft"}</h3>
+              <span className="muted">{{ user: "Written by you", ai: "Drafted by AI", template: "Template: fill in the [placeholders]" }[draft.revision?.author as string] ?? "Draft"}</span>
               <span className="badge" style={{ marginLeft: "auto" }}>From {projectName(draft.projectId)}</span>
             </div>
             <DraftEditor
               key={draft.id}
               draft={draft}
               rows={10}
+              editTitle
               label="Post draft"
               destination={`${platform} feed`}
               openUrl={COMPOSE[platform]}
-              limit={platform === "x" ? 280 : 3000}
+              limit={limit}
               onText={setPreview}
               left={<button className="btn ghost" onClick={notWorth}>Not Worth Posting</button>}
             >
-              <div className="chips" style={{ marginTop: 10 }}>
-                {(draft.revision?.sourceRefs ?? []).map((r: string) => <span className="chip" key={r}>{r}</span>)}
-                {(draft.meta?.cautions ?? []).map((c: string) => <span className="badge warn" key={c}>{c}</span>)}
-              </div>
+              {(draft.revision?.sourceRefs ?? []).length > 0 && (
+                <div className="chips" style={{ marginTop: 10 }} title="Project files this draft is based on">
+                  {draft.revision.sourceRefs.map((r: string) => <span className="chip" key={r}>{r}</span>)}
+                </div>
+              )}
+              {(draft.meta?.cautions ?? []).length > 0 && (
+                <div className="cautions">
+                  <b>Check before posting</b>
+                  <ul>{draft.meta.cautions.map((c: string) => <li key={c}>{c}</li>)}</ul>
+                </div>
+              )}
             </DraftEditor>
           </div>
           <div>

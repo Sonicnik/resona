@@ -229,8 +229,23 @@ export class DraftService {
   }
 
   /** Phase 1 standalone LinkedIn/X post drafts based on meaningful project developments. */
-  async createPostDraft(projectId: string, opts: { platform: "linkedin" | "x"; angle?: string; useAi?: boolean; force?: boolean }): Promise<DraftView> {
+  async createPostDraft(projectId: string, opts: { platform: "linkedin" | "x"; angle?: string; useAi?: boolean; force?: boolean; text?: string; title?: string | null }): Promise<DraftView> {
     const project = this.projects.get(projectId);
+    if (opts.text) {
+      // A post the user writes themself: no model call and no summary needed; same approval flow afterwards.
+      const id = this.insertDraft({
+        kind: "post",
+        projectId,
+        contextId: this.projects.latestContext(projectId)?.id as string | undefined ?? null,
+        platform: opts.platform,
+        channel: "post",
+        title: opts.title ?? null,
+        body: opts.text,
+        author: "user",
+        sourceRefs: [],
+      });
+      return this.get(id);
+    }
     const ctxRow = this.projects.latestContext(projectId);
     if (!ctxRow) throw badRequest("project has no summary yet; summarize it first");
     const ctx = contextForDraft(project.name, ctxRow);

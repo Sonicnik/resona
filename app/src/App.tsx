@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, AppCtx, initials, useCtx, type Ctx, type MenuItem, type Screen } from "./api";
-import { Graph, type GraphHandle } from "./Graph";
+import { Graph, LEVELS, levelOf, type GraphHandle } from "./Graph";
 import { Person } from "./Person";
 import { Home } from "./screens/Home";
 import { Opportunities } from "./screens/Opportunities";
@@ -12,7 +12,7 @@ const SCREENS: Array<[Screen, string]> = [["home", "Home"], ["opps", "Opportunit
 const STATUS_TEXT: Record<string, string> = { running: "Agent running", paused: "Agent paused", catching: "Catching up", offline: "Backend offline" };
 const HINT = (
   <>
-    <span>Drag to orbit</span><span>Scroll to zoom</span><span>Right-click a person</span><span><kbd>F</kbd> free flight</span>
+    <span>Drag to orbit</span><span>Scroll to zoom</span><span>Hover to see names</span><span><kbd>R</kbd> reset</span><span><kbd>F</kbd> free flight</span>
   </>
 );
 const FLY_HINT = (
@@ -91,13 +91,14 @@ export default function App() {
     }
   }, [notify, bump]);
 
-  const [scanning, setScanning] = useState(false);
+  const [scanStep, setScanStep] = useState<number | null>(null); // index into SCAN_STEPS while a scan runs
+  const scanning = scanStep !== null;
   const scan = useCallback(async () => {
     if (scanning) return;
-    setScanning(true);
-    notify("Scanning your folders and searching for new conversations…");
+    setScanStep(0);
     try {
       await api("POST", "/jobs/rescan-folders/run");
+      setScanStep(1);
       const r = await api("POST", "/discovery/run", {});
       const failed = r.queries.filter((q: any) => q.error).length;
       const skipped = r.skippedConnectors.map((c: any) => c.id).join(", ");
@@ -109,7 +110,7 @@ export default function App() {
     } catch (e) {
       notify(`Scan failed: ${(e as Error).message}`);
     } finally {
-      setScanning(false);
+      setScanStep(null);
       bump();
     }
   }, [scanning, notify, bump]);
@@ -226,11 +227,29 @@ export default function App() {
       }
       if ((e.target as HTMLElement).matches?.("input, textarea, select")) return;
       if (k === "f" && screen === "network") setFreeFlight((f) => !f);
+      if (k === "r" && screen === "network") resetView();
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   });
 
+  // Connection levels for the network filter; people with no connection are only in "All".
+  const levelFilters = useMemo(() => {
+    const people = (graphData?.nodes ?? []).filter((n: any) => !n.isSelf);
+    const count = (lv: number) => people.filter((n: any) => levelOf(n.tieStrength) === lv).length;
+    return [
+      ["all", "All", people.length, "Everyone, including people you haven't connected with"],
+      ["connected", "Connected", people.filter((n: any) => levelOf(n.tieStrength) > 0).length, "Levels 1–5"],
+      ...LEVELS.map((l) => [String(l.level), l.name, count(l.level), `Level ${l.level}: tie strength ${l.min > 0 ? `≥ ${l.min}` : "above 0"}`]),
+    ] as Array<[string, string, number, string]>;
+  }, [graphData]);
+  const resetView = () => {
+    setPersonId(null);
+    setFreeFlight(false);
+    setNetFilter("all");
+    setMenu(null);
+    graph.current?.reset();
+  };
   const names = useMemo(() => new Map<string, string>((graphData?.nodes ?? []).map((n: any) => [n.id, n.isSelf ? "You" : n.label])), [graphData]);
   const projectSeg = (value: string, set: (v: string) => void, first: [string, string], extra: Array<[string, string]> = []) => (
     <>
@@ -315,7 +334,14 @@ export default function App() {
             </div>
             <div className="tb-title"><h1>{SCREENS.find((s) => s[0] === screen)![1]}</h1><p>{SUBTITLE[screen]}</p></div>
             <div className="tb-spacer" />
-            <div className="seg glass thin" data-for="network" role="group" aria-label="Filter by project">{projectSeg(netFilter, setNetFilter, ["all", "Everyone"])}</div>
+            <div className="seg glass thin" data-for="network" role="group" aria-label="Filter by connection level">
+              {levelFilters.map(([id, name, count, title]) => (
+                <button key={id} aria-pressed={netFilter === id} title={title} onClick={() => setNetFilter(id)}>
+                  {name} <span className="seg-count">{count}</span>
+                </button>
+              ))}
+            </div>
+            <button className="btn glass thin net-reset" data-for="network" onClick={resetView} title="Zoom out to see everyone and stop orbiting (R)">Reset view</button>
             <div className="seg glass thin" data-for="opps" role="group" aria-label="Filter opportunities">{projectSeg(oppFilter, setOppFilter, ["all", "All"], [["followups", "Follow-ups"]])}</div>
             <div className="seg glass thin" data-for="posts" role="group" aria-label="Platform">
               <button aria-pressed={platform === "linkedin"} onClick={() => setPlatform("linkedin")}>LinkedIn</button>
@@ -352,6 +378,7 @@ export default function App() {
         <Person id={screen === "network" ? personId : null} names={names} onClose={() => setPersonId(null)} onDraftedFollowup={() => setOppFilter("followups")} />
       </div>
 
+      {scanStep !== null && <ScanOverlay step={scanStep} />}
       {palette && <Spotlight onClose={() => setPalette(false)} people={graphData?.nodes ?? []} />}
       {connect && <ConnectSheet name={connect} onClose={() => setConnect(null)} />}
       {menu && (
@@ -378,6 +405,50 @@ export default function App() {
         <span className="when">now</span>
       </div>
     </AppCtx.Provider>
+  );
+}
+
+const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches"];
+const ORBITS = [
+  { inset: 6, dur: 7, color: "var(--cyan)" },
+  { inset: 20, dur: 4.5, color: "#c4b5fd" },
+  { inset: 34, dur: 3, color: "#f0abfc" },
+];
+
+/** Covers and dims the app while a scan runs; the backend calls can't be cancelled, so there is no close button. */
+function ScanOverlay({ step }: { step: number }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSeconds((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="scan-overlay" role="alertdialog" aria-modal="true" aria-busy="true" aria-labelledby="scan-title" aria-describedby="scan-step">
+      <div className="scan-card glass thick" tabIndex={-1} ref={(el) => el?.focus()}>
+        <div className="radar" aria-hidden="true">
+          <i className="ring" style={{ inset: 0 }} />
+          <i className="ring" style={{ inset: 22 }} />
+          <i className="ring" style={{ inset: 44 }} />
+          <i className="sweep" />
+          {ORBITS.map((o, i) => (
+            <i key={i} className="orbit" style={{ inset: o.inset, animationDuration: `${o.dur}s`, animationDelay: `-${(o.dur * (i + 1)) / 3}s`, ["--c" as string]: o.color }} />
+          ))}
+          <i className="core" />
+        </div>
+        <h2 id="scan-title" className="scan-title">Scanning in progress</h2>
+        <p className="scan-sub">Please wait. Your agent is looking for new conversations.</p>
+        <ol className="scan-steps" id="scan-step" aria-live="polite">
+          {SCAN_STEPS.map((label, i) => (
+            <li key={label} className={i < step ? "done" : i === step ? "active" : "todo"} aria-current={i === step ? "step" : undefined}>
+              <span className="dot" aria-hidden="true">{i < step ? "✓" : ""}</span>
+              {label}
+            </li>
+          ))}
+        </ol>
+        <div className="scan-bar" aria-hidden="true"><i /></div>
+        <span className="scan-time">{String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}</span>
+      </div>
+    </div>
   );
 }
 
