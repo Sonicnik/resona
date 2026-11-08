@@ -55,6 +55,16 @@ test("credentials: stored in the secret store, never echoed, bad Anthropic keys 
     assert.ok(!bad.text.includes("sk-ant-not-a-real-key"));
     assert.equal(store.values.has("anthropic"), false);
 
+    const oat = await call("PUT", "/credentials/anthropic", { value: "sk-ant-oat01-subscriptiontoken" });
+    assert.equal(oat.status, 400);
+    assert.match(oat.json.error.message, /subscription login token/);
+    assert.equal(store.values.has("anthropic"), false);
+
+    // A pasted `export NAME="value"` line is reduced to the value.
+    await call("PUT", "/credentials/x", { value: ' export X_BEARER_TOKEN="AAAAbearer9876" ' });
+    assert.equal(store.values.get("x"), "AAAAbearer9876");
+    await call("DELETE", "/credentials/x");
+
     assert.equal((await call("PUT", "/credentials/nope", { value: "12345678" })).status, 404);
     const del = await call("DELETE", "/credentials/github");
     assert.equal(del.json.connected, false);
@@ -65,6 +75,26 @@ test("credentials: stored in the secret store, never echoed, bad Anthropic keys 
     s.close();
     if (saved.gh) process.env.GITHUB_TOKEN = saved.gh;
     if (saved.ant) process.env.ANTHROPIC_API_KEY = saved.ant;
+  }
+});
+
+test("credentials: a Keychain failure never echoes the key", async () => {
+  const saved = process.env.GITHUB_TOKEN;
+  const s = makeServices();
+  s.secrets.set = async (_n, value) => {
+    throw Object.assign(new Error(`Command failed: security add-generic-password -w ${value}`), { stderr: "SecKeychainItemCreateFromContent: User interaction is not allowed." });
+  };
+  const { call, close } = await serve(s);
+  try {
+    const res = await call("PUT", "/credentials/github", { value: "ghp_secretvalue999" });
+    assert.equal(res.status, 500);
+    assert.equal(res.json.error.code, "keychain_error");
+    assert.match(res.json.error.message, /User interaction is not allowed/);
+    assert.ok(!res.text.includes("ghp_secretvalue999"));
+    assert.equal(process.env.GITHUB_TOKEN, saved);
+  } finally {
+    await close();
+    s.close();
   }
 });
 

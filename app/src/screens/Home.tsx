@@ -17,7 +17,7 @@ function ProjectChange({ p, onDraftPost }: { p: any; onDraftPost: (id: string) =
 }
 
 export function Home({ onDraftPost }: { onDraftPost: (projectId: string) => void }) {
-  const { status, go, act, openPerson } = useCtx();
+  const { status, go, act, openPerson, scan, scanning } = useCtx();
   const recs = useApi<any>("/network/recommendations?limit=6");
   const projects = useApi<any[]>("/projects?kind=project");
   const posts = useApi<any[]>("/drafts?kind=post");
@@ -40,6 +40,7 @@ export function Home({ onDraftPost }: { onDraftPost: (projectId: string) => void
         </div>
         <div className="row">
           <button className="btn" onClick={() => act(() => api("POST", "/reviews"), "Weekly review generated. It is also in your Markdown vault.")}>Run Weekly Review</button>
+          <button className="btn" disabled={scanning} onClick={() => void scan()}>{scanning ? "Scanning…" : "Scan for Opportunities"}</button>
           <button className="btn primary" onClick={() => go("opps")}>Review Opportunities</button>
         </div>
       </div>

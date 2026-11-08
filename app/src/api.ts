@@ -38,6 +38,9 @@ export interface Ctx {
   openPerson(id: string, fly?: boolean): void;
   openMenu(items: MenuItem[], x: number, y: number): void;
   status: any;
+  /** Manual "scan for opportunities": rescan folders, then search sources and score new posts. */
+  scan(): Promise<void>;
+  scanning: boolean;
   /** Wraps an async action: reports errors as a notification and refreshes data afterwards. */
   act<T>(fn: () => Promise<T>, done?: string | ((r: T) => string | void)): Promise<T | undefined>;
 }

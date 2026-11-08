@@ -95,17 +95,38 @@ export function apiRouter(s: Services): Router {
 
   r.put("/credentials/:name", async (req, res) => {
     const name = credentialName(req);
-    const { value } = body(z.object({ value: z.string().trim().min(8).max(500) }), req);
+    const raw = body(z.object({ value: z.string().max(1000) }), req).value;
+    // Forgive common paste mistakes: surrounding quotes, or a whole `export NAME=value` line.
+    const value = raw.trim().replace(/^(export\s+)?[A-Z_]+=/, "").replace(/^["']|["']$/g, "").trim();
+    if (value.length < 8) throw new HttpError(400, "That doesn't look like a complete key. Copy the whole key and paste it again.", "invalid_credential");
     if (name === "anthropic") {
+      if (value.startsWith("sk-ant-oat"))
+        throw new HttpError(400, "That is a Claude subscription login token (from Claude Code), not an API key. Anthropic doesn't allow other apps to use it. Create an API key on the key page instead.", "invalid_credential");
+      if (value.startsWith("sk-ant-admin"))
+        throw new HttpError(400, "That is an Admin API key, which can't call models. Create a regular API key on the key page.", "invalid_credential");
       // Cheap authenticated call so a mistyped key is rejected before it is stored.
       try {
         await s.ai.verifyKey(value);
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        throw new HttpError(400, status === 401 ? "Anthropic rejected this API key" : "Could not verify the key with Anthropic", "invalid_credential");
+        const e = err as { status?: number; message?: string; error?: { error?: { type?: string; message?: string } } };
+        const detail = e.error?.error?.message ?? e.message ?? String(err);
+        console.warn(`[resona] Anthropic key check failed: status=${e.status ?? "none"} type=${e.error?.error?.type ?? "unknown"}`); // never log the key
+        const message =
+          e.status === 401
+            ? "Anthropic rejected this key (wrong, incomplete or revoked). Copy the whole key, which starts with sk-ant-api, and try again."
+            : e.status
+              ? `Anthropic refused the key check (${e.status}): ${detail}`
+              : `Couldn't reach Anthropic to check the key: ${detail}. Check your internet connection.`;
+        throw new HttpError(400, message, "invalid_credential");
       }
     }
-    await s.secrets.set(name, value);
+    try {
+      await s.secrets.set(name, value);
+    } catch (err) {
+      // Only stderr: execFile's message repeats the command line, which contains the key.
+      const stderr = String((err as { stderr?: string }).stderr ?? "").trim();
+      throw new HttpError(500, `The key is valid, but saving it to the macOS Keychain failed${stderr ? `: ${stderr}` : "."}`, "keychain_error");
+    }
     process.env[CREDENTIALS[name]] = value;
     if (name === "anthropic") s.ai.resetClient();
     res.json(credentialStatus(name));

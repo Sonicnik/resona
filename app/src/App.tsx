@@ -91,6 +91,29 @@ export default function App() {
     }
   }, [notify, bump]);
 
+  const [scanning, setScanning] = useState(false);
+  const scan = useCallback(async () => {
+    if (scanning) return;
+    setScanning(true);
+    notify("Scanning your folders and searching for new conversations…");
+    try {
+      await api("POST", "/jobs/rescan-folders/run");
+      const r = await api("POST", "/discovery/run", {});
+      const failed = r.queries.filter((q: any) => q.error).length;
+      const skipped = r.skippedConnectors.map((c: any) => c.id).join(", ");
+      notify(
+        `Scan done: ${r.queries.length} searches, ${r.newPosts} new posts, ${r.opportunities} new opportunities.` +
+          (failed ? ` ${failed} searches failed (offline or rate-limited).` : "") +
+          (skipped ? ` Not searched: ${skipped}.` : ""),
+      );
+    } catch (e) {
+      notify(`Scan failed: ${(e as Error).message}`);
+    } finally {
+      setScanning(false);
+      bump();
+    }
+  }, [scanning, notify, bump]);
+
   const openMenu = useCallback((items: MenuItem[], x: number, y: number, anchor?: string) => setMenu({ items, x, y, anchor }), []);
 
   // Agent status, counts and shared lists: polled, and refreshed after every change.
@@ -140,7 +163,7 @@ export default function App() {
     const chosen = await act(() => api("POST", "/system/choose", { kind: "folder", prompt: "Choose your unzipped LinkedIn data export folder" }));
     if (chosen?.path) await act(() => api("POST", "/imports/linkedin-archive", { path: chosen.path }), (r: any) => `Imported ${r.connections.rows} connections and ${r.messages.conversations} conversations (${r.messages.duplicates} already known).${r.warnings?.length ? ` ${r.warnings.length} warnings.` : ""}`);
   };
-  const ctx: Ctx = { version, bump, notify, go, openPerson, openMenu, status, act };
+  const ctx: Ctx = { version, bump, notify, go, openPerson, openMenu, status, act, scan, scanning };
 
   const MENUS: Record<string, () => MenuItem[]> = {
     app: () => [
@@ -166,6 +189,7 @@ export default function App() {
       { label: STATUS_TEXT[agentState], disabled: true }, "-",
       { label: paused ? "Resume Agent" : "Pause Agent", run: togglePause },
       { label: "Open Dashboard", run: () => setClosed(false) }, "-",
+      { label: scanning ? "Scanning…" : "Scan for Opportunities Now", disabled: scanning, run: () => void scan() },
       { label: `Review ${status?.counts?.openOpportunities ?? 0} Opportunities`, run: () => (setClosed(false), go("opps")) },
     ],
   };

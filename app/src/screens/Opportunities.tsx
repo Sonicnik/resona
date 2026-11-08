@@ -138,21 +138,12 @@ function AddPost({ onClose }: { onClose: () => void }) {
 }
 
 export function Opportunities({ filter }: { filter: string }) {
-  const { act } = useCtx();
+  const { scan, scanning } = useCtx();
   const [adding, setAdding] = useState(false);
   const opps = useApi<any[]>("/opportunities?limit=100");
   const drafts = useApi<any[]>("/drafts?kind=outreach");
   const followups = useApi<any[]>("/followups?state=open");
   const byOpp = new Map((drafts.data ?? []).filter((d) => d.opportunityId).map((d) => [d.opportunityId, d]));
-
-  const discover = () =>
-    act(
-      () => api("POST", "/discovery/run", {}),
-      (r: any) => {
-        const errors = r.queries.filter((q: any) => q.error).length;
-        return `Ran ${r.queries.length} searches: ${r.newPosts} new posts, ${r.opportunities} opportunities.${errors ? ` ${errors} searches failed.` : ""}${r.skippedConnectors.length ? ` Skipped: ${r.skippedConnectors.map((c: any) => c.id).join(", ")}.` : ""}`;
-      },
-    );
 
   if (filter === "followups") {
     const followDrafts = (drafts.data ?? []).filter((d) => !d.opportunityId && d.personId && d.status === "active");
@@ -178,12 +169,12 @@ export function Opportunities({ filter }: { filter: string }) {
     <div className="sheet glass lit">
       <div className="toolbar-row">
         <button className="btn" onClick={() => setAdding(!adding)}>Add Post</button>
-        <button className="btn" onClick={discover}>Find Conversations</button>
+        <button className="btn primary" disabled={scanning} onClick={() => void scan()}>{scanning ? "Scanning…" : "Scan for Opportunities"}</button>
         <span className="muted">LinkedIn search isn't authorized yet; paste LinkedIn posts with Add Post.</span>
       </div>
       {adding && <AddPost onClose={() => setAdding(false)} />}
       {opps.error && <div className="err">{opps.error}</div>}
-      {opps.data && !list.length && <div className="empty">No open opportunities. Add a post you found, or run Find Conversations.</div>}
+      {opps.data && !list.length && <div className="empty">No open opportunities. Add a post you found, or press Scan for Opportunities.</div>}
       <div className="grid cols-2">
         {list.map((o) => (
           <OppCard key={o.id} opp={o} draft={byOpp.get(o.id)} />

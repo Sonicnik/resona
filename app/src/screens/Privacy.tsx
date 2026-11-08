@@ -8,21 +8,33 @@ const CREDS: Record<string, { title: string; why: string; url: string; placehold
     url: "https://platform.claude.com/settings/keys",
     placeholder: "sk-ant-…",
   },
-  github: { title: "GitHub", why: "Optional. Raises the GitHub search rate limit for Find Conversations.", url: "https://github.com/settings/personal-access-tokens", placeholder: "github_pat_…" },
+  github: { title: "GitHub", why: "Optional. Raises the GitHub search rate limit when scanning for opportunities.", url: "https://github.com/settings/personal-access-tokens", placeholder: "github_pat_…" },
   x: { title: "X", why: "Optional. Enables X recent search. Needs an X developer app; platform costs apply.", url: "https://developer.x.com/en/portal/dashboard", placeholder: "Bearer token" },
 };
 
 /** Paste-once credential sheet. The value goes to the local backend, which stores it in the macOS Keychain. */
 export function ConnectSheet({ name, onClose }: { name: string; onClose: () => void }) {
-  const { act } = useCtx();
+  const { bump, notify } = useCtx();
   const c = CREDS[name];
   const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const save = async () => {
-    const v = value;
-    setValue(""); // never keep the secret in UI state longer than the request
-    const r = await act(() => api("PUT", `/credentials/${name}`, { value: v }), `${c.title} connected. The key is stored in your macOS Keychain.`);
-    if (r) onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      await api("PUT", `/credentials/${name}`, { value });
+      setValue(""); // drop the secret from UI state as soon as it is stored
+      bump();
+      notify(`${c.title} connected. The key is stored in your macOS Keychain.`);
+      onClose();
+    } catch (e) {
+      setError((e as Error).message); // keep the field so a paste mistake can be fixed
+    } finally {
+      setBusy(false);
+    }
   };
+  const ready = value.trim().length >= 8 && !busy;
   return (
     <div className="sheet-modal" onClick={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-label={`Connect ${c.title}`}>
       <div className="glass thick">
@@ -30,14 +42,19 @@ export function ConnectSheet({ name, onClose }: { name: string; onClose: () => v
         <p className="muted">{c.why}</p>
         <ol className="muted" style={{ paddingLeft: 18, display: "grid", gap: 4 }}>
           <li>Open the key page and sign in there with your own account.</li>
-          <li>Create a personal key and copy it.</li>
+          <li>Create {name === "anthropic" ? "an API key (it starts with sk-ant-api)" : "a personal token"} and copy it.</li>
           <li>Paste it below. It is stored in the macOS Keychain on this Mac, never in the project, database or Git.</li>
         </ol>
+        {name === "anthropic" && (
+          <p className="muted">A Claude Pro or Max subscription can't be used here: Anthropic only lets other apps use API keys from the Claude Console, which bills API usage separately.</p>
+        )}
         <button className="btn" onClick={() => window.open(c.url, "_blank", "noopener")}>Open Key Page</button>
-        <input className="field" type="password" autoComplete="off" spellCheck={false} placeholder={c.placeholder} value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && value.trim().length >= 8 && save()} aria-label={`${c.title} key`} />
+        <input className="field" type="password" autoComplete="off" spellCheck={false} placeholder={c.placeholder} value={value}
+          onChange={(e) => (setValue(e.target.value), setError(null))} onKeyDown={(e) => e.key === "Enter" && ready && save()} aria-label={`${c.title} key`} aria-invalid={Boolean(error)} aria-describedby="connect-error" />
+        {error && <div className="err" id="connect-error" role="alert">{error}</div>}
         <div className="opp-actions">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={value.trim().length < 8} onClick={save}>Save to Keychain</button>
+          <button className="btn primary" disabled={!ready} onClick={save}>{busy ? "Checking…" : "Save to Keychain"}</button>
         </div>
       </div>
     </div>
