@@ -6,6 +6,7 @@ import { loadConfig, type Config } from "../src/config.ts";
 import { createServices, type Services } from "../src/container.ts";
 import { Db } from "../src/db/database.ts";
 import { AiService, type ModelCall, type StructuredRequest } from "../src/ai/client.ts";
+import { MemoryStore } from "../src/system/mac.ts";
 
 export function tmpDir(prefix = "resona-test-"): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -43,7 +44,8 @@ export function makeServices(opts: { ai?: (db: Db, config: Config) => AiService 
   const config = loadConfig({ RESONA_DATA_DIR: path.join(dir, "data"), RESONA_WATCH: "0", RESONA_SCHEDULER: "0" } as NodeJS.ProcessEnv);
   const db = new Db(config.dbPath);
   const ai = opts.ai ? opts.ai(db, config) : new OfflineAi(db, config);
-  const services = createServices(config, { db, ai, log: () => {} });
+  // Tests never touch the real Keychain or open Finder dialogs.
+  const services = createServices(config, { db, ai, log: () => {}, secrets: new MemoryStore(), chooser: async () => null });
   return Object.assign(services, { dir });
 }
 

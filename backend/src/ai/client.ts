@@ -66,6 +66,16 @@ export class AiService {
     return this.client;
   }
 
+  /** Drops the cached client so a key connected or removed in-app takes effect immediately. */
+  resetClient(): void {
+    this.client = null;
+  }
+
+  /** Throws (with `status` 401 for a bad key) unless the key authenticates. Sends no user material. */
+  async verifyKey(apiKey: string): Promise<void> {
+    await new Anthropic({ apiKey, maxRetries: 1 }).models.list({ limit: 1 });
+  }
+
   /** Raises AiBlockedError unless every project allows AI processing. */
   assertPermitted(projectIds: string[]): void {
     for (const id of projectIds) {

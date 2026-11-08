@@ -67,9 +67,26 @@ export class Scheduler {
     return now - Date.parse(last.last_started_at) >= job.intervalMs;
   }
 
+  private wasPaused = false;
+
+  /** True while any job is running: the UI shows it as "catching up". */
+  get busy(): boolean {
+    return this.running.size > 0;
+  }
+
   async tick(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastTick > this.tickMs * 3) {
+    // Global pause from the app. Overdue jobs run once on the first tick after resuming.
+    if (this.db.getSetting<boolean>("agent.paused", false)) {
+      this.wasPaused = true;
+      this.lastTick = now;
+      return;
+    }
+    if (this.wasPaused) {
+      this.wasPaused = false;
+      this.resumedAfterPauseAt = new Date(now).toISOString();
+      this.log("resumed by the user; catching up");
+    } else if (now - this.lastTick > this.tickMs * 3) {
       this.resumedAfterPauseAt = new Date(now).toISOString();
       this.log(`resumed after a pause of ${Math.round((now - this.lastTick) / 60_000)} min; catching up`);
     }

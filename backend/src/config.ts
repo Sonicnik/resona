@@ -50,7 +50,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
     vaultDir: path.resolve(env.RESONA_VAULT_DIR || path.join(dataDir, "vault")),
     host: env.RESONA_HOST || "127.0.0.1",
     port: Number(env.RESONA_PORT || 4317),
-    allowedOrigins: (env.RESONA_ALLOWED_ORIGINS || "").split(",").map((o) => o.trim()).filter(Boolean),
+    // Default: the app's Vite dev server (app/vite.config.ts).
+    allowedOrigins: (env.RESONA_ALLOWED_ORIGINS ?? "http://localhost:1420").split(",").map((o) => o.trim()).filter(Boolean),
     apiToken: env.RESONA_API_TOKEN || undefined,
     ai: {
       model: env.RESONA_MODEL || "claude-opus-5-5",

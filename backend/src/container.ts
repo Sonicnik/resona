@@ -18,6 +18,7 @@ import { ConnectorRegistry, GitHubConnector, HackerNewsConnector, LinkedInConnec
 import { scanProject, type ScanResult } from "./ingestion/scanner.ts";
 import { FolderWatcher } from "./ingestion/watcher.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
+import { KeychainStore, macChooser, type Chooser, type SecretStore } from "./system/mac.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -41,6 +42,8 @@ export interface Services {
   vault: VaultService;
   connectors: ConnectorRegistry;
   scheduler: Scheduler;
+  secrets: SecretStore;
+  chooser: Chooser;
   watcher: FolderWatcher;
   pipeline: Pipeline;
   close(): void;
@@ -86,7 +89,7 @@ export class Pipeline {
   }
 }
 
-export function createServices(config: Config, opts: { db?: Db; ai?: AiService; log?: (m: string) => void } = {}): Services {
+export function createServices(config: Config, opts: { db?: Db; ai?: AiService; log?: (m: string) => void; secrets?: SecretStore; chooser?: Chooser } = {}): Services {
   const log = opts.log ?? ((m: string) => console.log(`[resona] ${m}`));
   const db = opts.db ?? new Db(config.dbPath);
   const index = new ContentIndex(db, new HashingEmbedder(512, config.embeddingModel));
@@ -104,14 +107,17 @@ export function createServices(config: Config, opts: { db?: Db; ai?: AiService; 
   const vault = new VaultService(db, people, config.vaultDir);
   const connectors = new ConnectorRegistry();
   connectors.register(new LinkedInConnector());
-  connectors.register(new GitHubConnector(config.connectors.githubToken));
+  connectors.register(new GitHubConnector(() => process.env.GITHUB_TOKEN || config.connectors.githubToken));
   connectors.register(new HackerNewsConnector());
-  connectors.register(new XConnector(config.connectors.xBearerToken));
+  connectors.register(new XConnector(() => process.env.X_BEARER_TOKEN || config.connectors.xBearerToken));
   const discovery = new DiscoveryService(db, connectors, projects, opportunities);
   const scheduler = new Scheduler(db, MINUTE, log);
 
-  const base = { config, db, index, ai, summarizer, people, projects, relationships, opportunities, drafts, imports, discovery, review, network, vault, connectors, scheduler };
+  const secrets = opts.secrets ?? new KeychainStore();
+  const chooser = opts.chooser ?? macChooser;
+  const base = { config, db, index, ai, summarizer, people, projects, relationships, opportunities, drafts, imports, discovery, review, network, vault, connectors, scheduler, secrets, chooser };
   const watcher = new FolderWatcher((projectId) => {
+    if (db.getSetting<boolean>("agent.paused", false)) return; // the next rescan after resuming catches up
     void pipeline.processProject(projectId, "watch").catch((err) => log(`watch processing failed: ${err}`));
   });
   const pipeline = new Pipeline({ ...base, watcher });

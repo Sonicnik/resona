@@ -1,9 +1,12 @@
 import { loadConfig } from "./config.ts";
 import { createServices } from "./container.ts";
 import { createApp } from "./api/app.ts";
+import { loadCredentials } from "./system/mac.ts";
 
 const config = loadConfig();
 const services = createServices(config);
+// Keys connected in the app live in the macOS Keychain, never in the repo, .env, database or vault.
+await loadCredentials(services.secrets);
 const app = createApp(services);
 
 const server = app.listen(config.port, config.host, () => {
