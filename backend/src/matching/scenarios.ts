@@ -95,7 +95,7 @@ export const SCENARIOS: Record<Exclude<Scenario, "general_discussion">, Scenario
   },
   hiring: {
     label: "is hiring for work that resembles your project",
-    patterns: [/\b(we('re| are)|i'm|i am) hiring\b/i, /\bjob (opening|posting)\b/i, /\binternships?\b/i, /\bjoin (our|the) team\b/i, /\bopen (role|position)s?\b/i, /\bnew grad\b/i],
+    patterns: [/\b(we('re| are)|i'm|i am|is|are|now) hiring\b/i, /^\s*hiring\b/im, /\bjob (opening|posting)\b/i, /\binternships?\b/i, /\bjoin (our|the) team\b/i, /\bopen (role|position)s?\b/i, /\bnew grad\b/i],
     contribution: "Connect a specific requirement to demonstrated work.",
     channel: "direct_message",
     action: "personal_message",

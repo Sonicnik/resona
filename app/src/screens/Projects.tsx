@@ -21,15 +21,15 @@ function Question({ q, projectId }: { q: any; projectId: string }) {
       return api("POST", `/projects/${projectId}/summarize`, {});
     }, "Answer saved to the project record and the summary was updated.");
   return (
-    <div className="q" style={{ flexWrap: "wrap" }}>
-      <span className="grow">{q.question}</span>
+    <div className="q stack">
+      <span>{q.question}</span>
       {!open ? (
-        <>
+        <div className="acts main">
           <button className="btn ghost" onClick={() => act(() => api("POST", `/questions/${q.id}/dismiss`), "Question dismissed.")}>Skip</button>
           <button className="btn" onClick={() => setOpen(true)}>Answer</button>
-        </>
+        </div>
       ) : (
-        <div className="row" style={{ width: "100%" }}>
+        <div className="row">
           <input className="field" autoFocus value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => e.key === "Enter" && answer.trim() && send()} placeholder="Your answer becomes a stated fact" />
           <button className="btn primary" disabled={!answer.trim()} onClick={send}>Save</button>
         </div>

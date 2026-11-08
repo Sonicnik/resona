@@ -26,9 +26,9 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
       (r: any) => (r.fits ? `Claude confirmed the fit: ${r.reason}` : `Claude thinks the project doesn't fit, so it was dismissed: ${r.reason}`),
     );
 
+  const dismissBtn = <button className="btn ghost" onClick={dismiss}>Dismiss</button>;
   const left = (
     <>
-      <button className="btn ghost" onClick={dismiss}>Dismiss</button>
       {opp.personId && <button className="btn" onClick={() => openPerson(opp.personId, true)}>View Person</button>}
       <OpenPost url={opp.post?.url} platform={opp.post?.platform} />
     </>
@@ -68,13 +68,15 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
         ))}
       </div>
       {draft ? (
-        <DraftEditor draft={draft} label={`Draft for ${opp.personName}`} destination={opp.post?.url ?? opp.personName ?? "post"} openUrl={openUrlFor(opp)} left={left} />
+        <DraftEditor draft={draft} label={`Draft for ${opp.personName}`} destination={opp.post?.url ?? opp.personName ?? "post"} openUrl={openUrlFor(opp)} left={left} aside={dismissBtn} />
       ) : (
-        <div className="opp-actions">
-          <span className="badge" style={{ marginRight: "auto" }}>New</span>
-          {left}
-          <button className="btn" onClick={assess}>Check Fit with AI</button>
-          <button className="btn primary" onClick={write}>Draft Reply</button>
+        <div className="actions">
+          <div className="acts">{left}</div>
+          <div className="acts main">
+            {dismissBtn}
+            <button className="btn" onClick={assess}>Check Fit with AI</button>
+            <button className="btn primary" onClick={write}>Draft Reply</button>
+          </div>
         </div>
       )}
     </article>

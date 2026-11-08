@@ -358,3 +358,47 @@ a.btn { text-decoration: none; color: inherit; }
 .seg .seg-count { font-size: 11px; color: var(--t3); margin-left: 2px; }
 .seg button[aria-pressed="true"] .seg-count { color: var(--t2); }
 .net-reset { height: 30px; border-radius: 99px; padding: 0 14px; white-space: nowrap; }
+
+/* ---------- Layout fixes: action rows, toolbar overflow, network bars ---------- */
+/* Card actions: secondary buttons on the left, the main actions kept together on the right.
+   When a card is narrow the main group wraps onto its own line instead of splitting. */
+.actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.acts.main { justify-content: flex-end; margin-left: auto; }
+/* Borderless buttons need less padding; this keeps Dismiss + two actions on one row in 3-column grids. */
+.acts .btn.ghost { padding: 0 8px; }
+.actions-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.actions-meta .save-state { flex: 1; min-width: 0; }
+.actions-meta .counter { margin-left: auto; }
+/* Keep actions at the bottom so cards in a row line up. */
+.card.opp > .actions:last-child, .card.opp > .actions-meta + .actions { margin-top: auto; }
+
+/* Project questions: the question gets the full width, buttons sit under it. */
+.q.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.q.stack .row .field { flex: 1; min-width: 0; }
+
+/* Toolbar: fixed controls never shrink; the title and filter segments give way instead,
+   and a segment that still doesn't fit scrolls sideways rather than covering the title. */
+.toolbar .tb-group, .toolbar .search, .toolbar .net-reset { flex: none; }
+.tb-title { flex: 0 1 auto; min-width: 64px; overflow: hidden; }
+.tb-title h1 { overflow: hidden; text-overflow: ellipsis; }
+.toolbar .seg { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.toolbar .seg::-webkit-scrollbar { display: none; }
+.toolbar .seg button { flex: none; }
+/* The network level filter is the widest toolbar control: give it the room the search label would take. */
+@media (max-width: 1520px) {
+  body[data-screen="network"] .search { width: 34px; padding: 0; justify-content: center; }
+  body[data-screen="network"] .search span, body[data-screen="network"] .search kbd { display: none; }
+}
+@media (max-width: 1380px) {
+  body[data-screen="network"] .seg-count, body[data-screen="network"] .tb-title p { display: none; }
+  body[data-screen="opps"] .search { width: 34px; padding: 0; justify-content: center; }
+  body[data-screen="opps"] .search span, body[data-screen="opps"] .search kbd { display: none; }
+}
+@media (max-width: 1280px) {
+  /* Legend left, hint right, so the two bars never overlap. */
+  .hint { left: auto; right: 4px; transform: none; }
+  .hint:not(.fly) span:nth-child(3) { display: none; }
+  /* Fade the end of a filter bar that scrolls, so it's clear there are more choices. */
+  .toolbar .seg { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+}

@@ -166,7 +166,7 @@ export function templateOutreach(args: {
   const lines = [
     openers[args.scenario] ?? `Hi ${first}, your post about ${topic} connects with something I've been working on.`,
     cap ? `The relevant part: ${cap.charAt(0).toLowerCase()}${cap.slice(1).replace(/\.$/, "")}.` : args.ctx.summary ? truncate(args.ctx.summary, 200) : "",
-    result ? `So far: ${result.claim}.` : "",
+    result ? `So far: ${sentence(result.claim)}` : "",
     lim ? `One limitation to be upfront about: ${lim.replace(/\.$/, "")}.` : "",
     "Happy to share [demo/repo link] if it's useful, or to hear which requirements matter most for you.",
   ].filter(Boolean);
@@ -182,9 +182,15 @@ export function templatePost(ctx: ContextForDraft, platform: "linkedin" | "x"): 
       ? truncate(`Working on ${ctx.projectName}: ${result?.claim ?? ctx.summary} [what you learned] [link]`, 280)
       : [
           `I've been working on ${ctx.projectName}${ctx.problem ? ` to address ${ctx.problem.replace(/\.$/, "")}` : ""}.`,
-          result ? `A recent result: ${result.claim}.` : "[Describe the milestone, finding or lesson.]",
-          ctx.limitations[0] ? `What's still hard: ${ctx.limitations[0]}.` : "[What's still hard or unresolved.]",
+          result ? `A recent result: ${sentence(result.claim)}` : "[Describe the milestone, finding or lesson.]",
+          ctx.limitations[0] ? `What's still hard: ${sentence(ctx.limitations[0])}` : "[What's still hard or unresolved.]",
           "[A question for readers who work on similar problems.]",
         ].join("\n\n");
   return { title: `${ctx.projectName} update`, body, sourceRefs: result?.evidence ?? [] };
+}
+
+/** Ends text with exactly one sentence terminator, so templates never print "supported..". */
+function sentence(text: string): string {
+  const t = text.trim();
+  return /[.!?]$/.test(t) ? t : `${t}.`;
 }

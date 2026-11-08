@@ -31,6 +31,8 @@ export function DraftEditor(props: {
   editTitle?: boolean;
   onText?: (text: string) => void;
   left?: ReactNode;
+  /** Rendered first in the main action group (e.g. Dismiss), so it stays on the same row as Approve. */
+  aside?: ReactNode;
   children?: ReactNode;
 }) {
   const { draft } = props;
@@ -125,25 +127,30 @@ export function DraftEditor(props: {
       <textarea aria-label={props.label} rows={Math.min(24, Math.max(props.rows ?? 5, text.split("\n").length + 1))} value={text} readOnly={sent}
         onChange={(e) => onEdit(e.target.value)} onBlur={() => void save().catch(() => {})} />
       {props.children}
-      <div className="opp-actions">
+      <div className="actions-meta">
         <span className={`badge ${tone}`}>{label}</span>
-        <span className={`muted save-state ${saveState === "empty" || saveState === "error" ? "over-limit" : ""}`} aria-live="polite" style={{ marginRight: "auto" }}>
+        <span className={`muted save-state ${saveState === "empty" || saveState === "error" ? "over-limit" : ""}`} aria-live="polite">
           {sent ? "" : { idle: dirty.current ? "Unsaved changes" : "Edit freely: changes save automatically", saving: "Saving…", saved: "All changes saved", empty: "Text can't be empty", error: "Couldn't save. Keep typing to retry." }[saveState]}
         </span>
-        {props.limit && <span className={`muted ${text.length > props.limit ? "over-limit" : ""}`}>{text.length} / {props.limit}</span>}
-        {props.left}
-        {!sent && <button className="btn" onClick={copyOpen}>{props.openUrl ? "Copy & Open" : "Copy"}</button>}
-        {approved && <button className="btn primary" onClick={markSent}>Mark Sent</button>}
-        {last?.state === "uncertain" && (
-          <>
-            <button className="btn" onClick={() => reconcile(false)}>Wasn't Sent</button>
-            <button className="btn primary" onClick={() => reconcile(true)}>It Was Sent</button>
-          </>
-        )}
-        {last?.state === "failed" && <button className="btn" onClick={retry}>Retry</button>}
-        {!sent && !approved && !["uncertain", "failed"].includes(last?.state) && (
-          <button className="btn primary" onClick={approve}>Approve</button>
-        )}
+        {props.limit && <span className={`muted counter ${text.length > props.limit ? "over-limit" : ""}`}>{text.length} / {props.limit}</span>}
+      </div>
+      <div className="actions">
+        {props.left && <div className="acts">{props.left}</div>}
+        <div className="acts main">
+          {!sent && props.aside}
+          {!sent && <button className="btn" onClick={copyOpen}>{props.openUrl ? "Copy & Open" : "Copy"}</button>}
+          {approved && <button className="btn primary" onClick={markSent}>Mark Sent</button>}
+          {last?.state === "uncertain" && (
+            <>
+              <button className="btn" onClick={() => reconcile(false)}>Wasn't Sent</button>
+              <button className="btn primary" onClick={() => reconcile(true)}>It Was Sent</button>
+            </>
+          )}
+          {last?.state === "failed" && <button className="btn" onClick={retry}>Retry</button>}
+          {!sent && !approved && !["uncertain", "failed"].includes(last?.state) && (
+            <button className="btn primary" onClick={approve}>Approve</button>
+          )}
+        </div>
       </div>
     </>
   );
