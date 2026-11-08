@@ -6,21 +6,15 @@ A local-first AI networking app for Mac that turns your projects into personaliz
 
 ## Run the prototype
 
-Needs Node 22.13+. Two terminals:
+Needs Node 22.13+. From the repository root:
 
 ```bash
-cd backend && npm install && npm run demo
+./start.sh
 ```
 
-```bash
-cd backend && npm run seed
-```
+It installs what's missing, starts the backend on demo data, seeds it once, and opens http://localhost:1420. Ctrl+C stops everything. Demo data lives in `~/.resona-demo` (delete it to reset); `./start.sh --real` uses your real data instead, without seeding.
 
-```bash
-cd app && npm install && npm run dev
-```
-
-Open http://localhost:1420. `npm run demo` keeps demo data in `~/.resona-demo` (delete it to reset); use `npm start` for your real data. To turn on AI, open **Privacy → Claude → Connect**: it opens the Anthropic key page in your browser, and the key you paste is stored in your macOS Keychain, never in this repository.
+To turn on AI, open **Privacy → Claude → Connect**: it opens the Anthropic key page in your browser, and the key you paste is stored in your macOS Keychain, never in this repository.
 
 ## How it works
 
