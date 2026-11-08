@@ -4,22 +4,25 @@ import ForceGraph3D from "3d-force-graph";
 import SpriteText from "three-spritetext";
 
 export type NodeStatus = "you" | "connected" | "interacted" | "prospect";
-const COLOR: Record<NodeStatus, string> = { you: "#ededed", connected: "#3b8eea", interacted: "#8f8f8f", prospect: "#5a5a5a" };
+// Kept in sync with --node-* in styles.css (the legend uses those).
+const COLOR: Record<NodeStatus, string> = { you: "#ededed", connected: "#3fb950", interacted: "#3b8eea", prospect: "#6e6e6e" };
 const RADIUS: Record<NodeStatus, number> = { you: 3.2, connected: 2.2, interacted: 1.8, prospect: 1.3 };
 const HALO: Record<NodeStatus, number> = { you: 0.9, connected: 0.75, interacted: 0.6, prospect: 0.35 };
-const LINK_COLOR: Record<string, string> = { proposed: "#2a2a2a", interaction: "#555555", confirmed: "#2f74c0" };
+const LINK_COLOR: Record<string, string> = { proposed: "#333333", interaction: "#2f6fb8", confirmed: "#2f8a47" };
 const LINK_KIND: Record<string, string> = { relationship: "confirmed", interaction: "interaction", proposed: "proposed" };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Colour a person by the strongest *recorded* tie to you; shared interests never count as a tie. */
-export function nodeStatus(node: any, edges: any[]): NodeStatus {
+export function nodeStatus(node: any, edges: any[], selfId?: string): NodeStatus {
   if (node.isSelf) return "you";
-  const mine = edges.filter((e) => e.from === node.id || e.to === node.id);
+  // Only ties between this person and you count: a relationship with someone else doesn't make them your connection.
+  const mine = edges.filter((e) => (e.from === node.id && (!selfId || e.to === selfId)) || (e.to === node.id && (!selfId || e.from === selfId)));
   if (mine.some((e) => e.kind === "relationship")) return "connected";
   if (mine.some((e) => e.kind === "interaction") || node.interactionCount > 0) return "interacted";
   return "prospect";
 }
 console.assert(nodeStatus({ id: "a", interactionCount: 0 }, [{ kind: "proposed", from: "me", to: "a" }]) === "prospect", "proposed edge is not a relationship");
+console.assert(nodeStatus({ id: "a", interactionCount: 1 }, [{ kind: "relationship", from: "b", to: "a" }], "me") === "interacted", "someone else's relationship doesn't connect them to you");
 
 /** Connection levels by tie strength (0–1, from the backend); people with no tie at all get no level. */
 export const LEVELS = [
@@ -105,6 +108,8 @@ export function Graph(props: {
   data: any | undefined;
   filter: string;
   selected: string | null;
+  /** Legend hover: keep people with this status lit and fade everyone else. */
+  highlight?: NodeStatus | null;
   freeFlight: boolean;
   onSelect: (id: string | null) => void;
   onMenu: (node: any, ev: MouseEvent) => void;
@@ -116,6 +121,7 @@ export function Graph(props: {
   const st = useRef({
     filter: props.filter,
     selected: props.selected,
+    highlight: null as NodeStatus | null,
     hovered: null as string | null,
     focus: null as Set<string> | null,
     freeFlight: props.freeFlight,
@@ -134,6 +140,8 @@ export function Graph(props: {
   const visible = (n: any) => !n || inGroup(n, st.current.filter);
   // The map orbits slowly only while nobody is selected: a selected person stays put.
   const rotating = () => !st.current.freeFlight && !st.current.rotateOff && !st.current.selected && !reduceMotion;
+  /** Lit by the legend: everyone when nothing is hovered there, else only that status (and you, as the anchor). */
+  const lit = (n: any) => !st.current.highlight || !n || n.isSelf || n.__status === st.current.highlight;
   const applyDim = () => {
     const s = st.current;
     const focusId = s.hovered ?? s.selected;
@@ -147,7 +155,7 @@ export function Graph(props: {
         o.__raycast ??= o.raycast;
         o.raycast = inside ? o.__raycast : () => {};
       });
-      n.__dim = (inside ? 1 : 0.08) * (!s.focus || s.focus.has(n.id) ? 1 : 0.15);
+      n.__dim = (inside ? 1 : 0.08) * (!s.focus || s.focus.has(n.id) ? 1 : 0.15) * (lit(n) ? 1 : 0.07);
       n.__core.material.opacity = n.__dim;
       n.__halo.material.opacity = n.__haloBase * n.__dim;
     }
@@ -291,6 +299,7 @@ export function Graph(props: {
       })
       .linkColor((l: any) => {
         const f = st.current.focus;
+        if (!(lit(l.__a) && lit(l.__b))) return "#141414"; // legend hover: links to faded people fade too
         return f && !(f.has(endId(l.source)) && f.has(endId(l.target))) ? "#151515" : LINK_COLOR[l.kind];
       })
       .linkWidth(0)
@@ -299,7 +308,7 @@ export function Graph(props: {
       .linkDirectionalParticles((l: any) => (l.kind === "confirmed" ? 2 : 0))
       .linkDirectionalParticleWidth(0.7)
       .linkDirectionalParticleSpeed(0.004)
-      .linkDirectionalParticleColor(() => "#cfe3ff")
+      .linkDirectionalParticleColor(() => "#c9f5d4")
       .onNodeHover((hit: any) => {
         const n = hit && visible(hit) ? hit : null; // outside the shown group: no hover
         div.style.cursor = n && !n.isSelf ? "pointer" : "";
@@ -463,7 +472,7 @@ export function Graph(props: {
     const prev = new Map(st.current.nodes.map((n) => [n.id, n]));
     const nodes = props.data.nodes.map((n: any) => {
       const old = prev.get(n.id);
-      const status = nodeStatus(n, props.data.edges);
+      const status = nodeStatus(n, props.data.edges, props.data.selfId);
       const keep = old && old.__status === status ? { x: old.x, y: old.y, z: old.z, vx: old.vx, vy: old.vy, vz: old.vz } : old ? { x: old.x, y: old.y, z: old.z } : {};
       return { ...n, ...keep, __status: status, ...(n.isSelf ? { fx: 0, fy: 0, fz: 0 } : {}) };
     });
@@ -505,6 +514,11 @@ export function Graph(props: {
     fitTo(st.current.nodes.filter(visible), reduceMotion ? 0 : 900); // visible() always includes you
     applyDim();
   }, [props.filter]);
+
+  useEffect(() => {
+    st.current.highlight = props.highlight ?? null;
+    applyDim();
+  }, [props.highlight]);
 
   useEffect(() => {
     Object.assign(st.current, { selected: props.selected, freeFlight: props.freeFlight });

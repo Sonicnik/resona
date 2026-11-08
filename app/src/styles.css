@@ -4,6 +4,8 @@
   --bg: #0a0a0a;
   --t1: #ededed; --t2: #a1a1a1; --t3: #6b6b6b;
   --accent-solid: #ededed; --accent-hi: #a1a1a1; --violet: #8f8f8f; --cyan: #3b8eea; --dim: #5a5a5a;
+  /* Network people (kept in sync with COLOR in Graph.tsx) */
+  --node-connected: #3fb950; --node-interacted: #3b8eea; --node-proposed: #6e6e6e;
   --ok: #3fb950; --warn: #d29922; --danger: #f85149;
   --glass-thin: rgba(255,255,255,.035);
   --glass: rgba(20,20,20,.86);
@@ -416,3 +418,9 @@ a.btn { text-decoration: none; color: inherit; }
 .seg-more[data-active] { background-color: #2a2a2a; color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,.4), inset 0 .5px 0 rgba(255,255,255,.06); }
 .seg-more:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,142,234,.5); }
 .seg-more option { background: #141414; color: #ededed; }
+
+/* Network legend: hovering an item highlights those people on the map. */
+.legend .lg-item { display: flex; align-items: center; gap: 6px; border: 0; padding: 0; background: none; font: inherit; color: inherit; cursor: default; transition: color .2s, opacity .2s; }
+.legend .lg-item:focus-visible { outline: none; color: var(--t1); text-decoration: underline; text-underline-offset: 3px; }
+.legend[data-active] .lg-item { opacity: .45; }
+.legend[data-active] .lg-item[aria-pressed="true"] { opacity: 1; color: var(--t1); }

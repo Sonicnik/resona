@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, AppCtx, initials, useCtx, type Ctx, type MenuItem, type Screen } from "./api";
-import { CLOSE_MIN, Graph, inGroup, type GraphHandle } from "./Graph";
+import { CLOSE_MIN, Graph, inGroup, type GraphHandle, type NodeStatus } from "./Graph";
 import { Person } from "./Person";
 import { Home } from "./screens/Home";
 import { Opportunities } from "./screens/Opportunities";
@@ -44,6 +44,7 @@ export default function App() {
   const [zoomed, setZoomed] = useState(false);
   const [freeFlight, setFreeFlight] = useState(false);
   const [netFilter, setNetFilter] = useState("all");
+  const [legendFocus, setLegendFocus] = useState<NodeStatus | null>(null);
   const [oppFilter, setOppFilter] = useState("all");
   const [platform, setPlatform] = useState<"linkedin" | "x">("linkedin");
   const [postProject, setPostProject] = useState<string | null>(null);
@@ -328,7 +329,7 @@ export default function App() {
 
       <div className={`window ${zoomed ? "zoomed" : ""} ${closed ? "closed" : ""}`}>
         <div className="aurora" aria-hidden="true"><i /><i /><i /></div>
-        <Graph data={graphData} filter={netFilter} selected={personId} freeFlight={freeFlight} onSelect={(id) => (id ? openPerson(id, true) : (setMenu(null), setPersonId(null)))} onMenu={personMenu} handle={graph} />
+        <Graph data={graphData} filter={netFilter} selected={personId} highlight={legendFocus} freeFlight={freeFlight} onSelect={(id) => (id ? openPerson(id, true) : (setMenu(null), setPersonId(null)))} onMenu={personMenu} handle={graph} />
 
         <div className="app">
           <nav className="sidebar glass lit" aria-label="Sidebar">
@@ -411,10 +412,23 @@ export default function App() {
             <section className={`screen ${screen === "posts" ? "on" : ""}`}>{screen === "posts" && <Posts platform={platform} projectHint={postProject} />}</section>
             <section className={`screen network-screen ${screen === "network" ? "on" : ""}`}>
               <div className="net-ui">
-                <div className="legend glass thin">
-                  <span><i style={{ background: "var(--dim)" }} />Proposed</span>
-                  <span><i style={{ background: "var(--violet)" }} />Interacted</span>
-                  <span><i style={{ background: "var(--cyan)", boxShadow: "0 0 8px var(--cyan)" }} />Connected</span>
+                <div className="legend glass thin" data-active={legendFocus ? "" : undefined} onMouseLeave={() => setLegendFocus(null)}>
+                  {LEGEND.map(([status, label, color]) => (
+                    // Hover or focus an item to keep those people lit and fade the rest of the map.
+                    <button
+                      key={status}
+                      type="button"
+                      className="lg-item"
+                      aria-pressed={legendFocus === status}
+                      title={`Highlight ${label.toLowerCase()} people`}
+                      onMouseEnter={() => setLegendFocus(status)}
+                      onFocus={() => setLegendFocus(status)}
+                      onBlur={() => setLegendFocus(null)}
+                    >
+                      <i style={{ background: color, boxShadow: status === "connected" ? `0 0 8px ${color}` : undefined }} />
+                      {label}
+                    </button>
+                  ))}
                 </div>
                 <div className={`hint glass thin ${freeFlight ? "fly" : ""}`}>{freeFlight ? FLY_HINT : HINT}</div>
               </div>
@@ -456,6 +470,13 @@ export default function App() {
     </AppCtx.Provider>
   );
 }
+
+/** Network legend, in the same colours as the dots (see --node-* in styles.css). */
+const LEGEND: Array<[NodeStatus, string, string]> = [
+  ["prospect", "Proposed", "var(--node-proposed)"],
+  ["interacted", "Interacted", "var(--node-interacted)"],
+  ["connected", "Connected", "var(--node-connected)"],
+];
 
 /** All, Close and the three largest industries get buttons; smaller groups go in the "More" menu. */
 const SHOWN_GROUPS = 5;

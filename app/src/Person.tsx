@@ -7,8 +7,8 @@ const EVENT: Record<string, [string, string]> = {
   draft: ["Draft waiting", "#d29922"],
   approved: ["Approved by you", "#a1a1a1"],
   sent: ["Sent", "#d4d4d4"],
-  replied: ["Replied", "#3fb950"],
-  connected: ["Connected", "#3b8eea"],
+  replied: ["Replied", "#3b8eea"],
+  connected: ["Connected", "#3fb950"],
 };
 
 /** Approved, sent, replied and connected stay separate events, as the product requires. */
