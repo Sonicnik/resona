@@ -11,6 +11,13 @@ export class AiUnavailableError extends Error {
 }
 export class AiBlockedError extends Error {
   readonly code = "ai_permission_denied";
+  constructor(
+    message: string,
+    /** The folder that blocked the request, so the app can offer to allow it. */
+    readonly project?: { projectId: string; projectName: string },
+  ) {
+    super(message);
+  }
 }
 export class AiRefusedError extends Error {
   readonly code = "ai_refused";
@@ -94,8 +101,10 @@ export class AiService {
         [id],
       );
       if (!row || row.ai_permission !== "allowed") {
+        const name = row?.name ?? id;
         throw new AiBlockedError(
-          `AI processing is not permitted for folder "${row?.name ?? id}". Grant permission per folder before sending its content to a model provider.`,
+          `AI is turned off for the "${name}" folder, so nothing from it was sent to the AI. Allow it for this folder to continue.`,
+          row ? { projectId: id, projectName: name } : undefined,
         );
       }
     }

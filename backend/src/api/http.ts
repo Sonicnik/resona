@@ -53,6 +53,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     status = 403;
     code = err.code;
     message = err.message;
+    details = err.project;
   } else if (err instanceof AiUnavailableError || err instanceof ConnectorUnavailableError) {
     status = 503;
     code = err.code;

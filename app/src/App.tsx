@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, AppCtx, initials, useCtx, type Ctx, type MenuItem, type Screen } from "./api";
+import { api, ApiError, AppCtx, initials, useCtx, type Ctx, type MenuItem, type Screen } from "./api";
 import { Graph, LEVELS, levelOf, type GraphHandle } from "./Graph";
 import { Person } from "./Person";
 import { Home } from "./screens/Home";
@@ -49,7 +49,7 @@ export default function App() {
   const [postProject, setPostProject] = useState<string | null>(null);
   const [connect, setConnect] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ items: MenuItem[]; x: number; y: number; anchor?: string } | null>(null);
-  const [toast, setToast] = useState<{ text: string; undo?: () => void; n: number } | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo?: () => void; label?: string; n: number } | null>(null);
   const [palette, setPalette] = useState(false);
   const [graphData, setGraphData] = useState<any>();
   const [projects, setProjects] = useState<any[]>([]);
@@ -57,10 +57,11 @@ export default function App() {
   const graph = useRef<GraphHandle | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
-  const notify = useCallback((text: string, undo?: () => void) => {
-    setToast({ text, undo, n: Date.now() });
+  const notify = useCallback((text: string, undo?: () => void, label?: string) => {
+    setToast({ text, undo, label, n: Date.now() });
     clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast((t) => (t ? { ...t, n: 0 } : t)), 4500);
+    // Leave a notification that asks for a decision up long enough to read and act on.
+    toastTimer.current = window.setTimeout(() => setToast((t) => (t ? { ...t, n: 0 } : t)), label ? 10000 : 4500);
   }, []);
 
   const go = useCallback((s: Screen) => {
@@ -84,7 +85,19 @@ export default function App() {
       if (msg) notify(msg);
       return r;
     } catch (e) {
-      notify((e as Error).message);
+      const folder = e instanceof ApiError && e.code === "ai_permission_denied" ? e.details : null;
+      if (folder?.projectId) {
+        // One click allows AI for that folder (the same switch as in Privacy) and retries what the user asked for.
+        notify(
+          (e as Error).message,
+          () => void act(async () => {
+            await api("PATCH", `/projects/${folder.projectId}`, { aiPermission: "allowed" });
+            notify(`AI allowed for ${folder.projectName}. Retrying…`);
+            return fn();
+          }, done),
+          `Allow AI for ${folder.projectName}`,
+        );
+      } else notify((e as Error).message);
       return undefined;
     } finally {
       bump();
@@ -400,7 +413,7 @@ export default function App() {
         <div className="tx">
           <b>Networking Agent</b>
           <span>{toast?.text}</span>
-          {toast?.undo && <div><button className="btn" onClick={() => (toast.undo?.(), setToast(null))}>Undo</button></div>}
+          {toast?.undo && <div><button className="btn" onClick={() => (toast.undo?.(), setToast(null))}>{toast.label ?? "Undo"}</button></div>}
         </div>
         <span className="when">now</span>
       </div>

@@ -33,7 +33,8 @@ export interface Ctx {
   /** Bumped after every mutation; data hooks refetch when it changes. */
   version: number;
   bump(): void;
-  notify(text: string, undo?: () => void): void;
+  /** Shows a notification; `action` adds a button (labelled "Undo" unless `label` says otherwise). */
+  notify(text: string, action?: () => void, label?: string): void;
   go(screen: Screen): void;
   openPerson(id: string, fly?: boolean): void;
   openMenu(items: MenuItem[], x: number, y: number): void;

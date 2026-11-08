@@ -118,7 +118,8 @@ export function Graph(props: {
     const lv = levelOf(n.tieStrength);
     return st.current.filter === "connected" ? lv > 0 : lv === Number(st.current.filter);
   };
-  const rotating = () => !st.current.freeFlight && !st.current.rotateOff && !reduceMotion;
+  // The map orbits slowly only while nobody is selected: a selected person stays put.
+  const rotating = () => !st.current.freeFlight && !st.current.rotateOff && !st.current.selected && !reduceMotion;
   const applyDim = () => {
     const s = st.current;
     const focusId = s.hovered ?? s.selected;
@@ -131,25 +132,62 @@ export function Graph(props: {
     }
     if (graph.current) graph.current.linkColor(graph.current.linkColor()).linkVisibility(graph.current.linkVisibility());
   };
+  /**
+   * Moves the camera and the point it looks at together, on one eased timer. Callers keep the viewing
+   * direction the same, so the move is a straight zoom/pan with no turning. (The library's own
+   * cameraPosition tweens position and look-at on different timers, which swings the view.)
+   */
+  const glide = useRef(0);
+  const moveCamera = (pos: THREE.Vector3, target: THREE.Vector3, ms: number) => {
+    const g = graph.current;
+    if (!g) return;
+    const cam = g.camera(), controls = g.controls();
+    cancelAnimationFrame(glide.current);
+    if (!ms) {
+      cam.position.copy(pos);
+      controls.target.copy(target);
+      controls.update();
+      return;
+    }
+    const p0 = cam.position.clone(), t0 = controls.target.clone(), start = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / ms), e = 1 - (1 - k) ** 3; // ease out
+      cam.position.lerpVectors(p0, pos, e);
+      controls.target.lerpVectors(t0, target, e);
+      controls.update();
+      if (k < 1) glide.current = requestAnimationFrame(step);
+    };
+    glide.current = requestAnimationFrame(step);
+  };
+  /** Current viewing direction, from the point looked at back to the camera. */
+  const viewDir = () => {
+    const g = graph.current;
+    const d = g ? g.camera().position.clone().sub(g.controls().target) : new THREE.Vector3();
+    return d.lengthSq() > 1e-6 ? d.normalize() : new THREE.Vector3(0.35, 0.35, 0.87).normalize();
+  };
+  /** Zoom straight in on a person: same viewing angle, no rotation. */
   const flyTo = (id: string) => {
     const n = st.current.nodes.find((x) => x.id === id);
     if (!graph.current || !n || n.x == null) return;
-    const h = Math.hypot(n.x, n.y, n.z) || 1;
-    const r = 1 + 110 / h;
-    graph.current.cameraPosition({ x: n.x * r, y: n.y * r, z: n.z * r }, n, reduceMotion ? 0 : 1600);
+    graph.current.controls().autoRotate = false; // resumes when the person is deselected (see rotating)
+    const node = new THREE.Vector3(n.x, n.y, n.z);
+    // Stop about 110 units away; if already closer, don't back off.
+    const dist = Math.max(40, Math.min(110, graph.current.camera().position.distanceTo(node)));
+    moveCamera(node.clone().addScaledVector(viewDir(), dist), node, reduceMotion ? 0 : 900);
   };
   /**
    * Point the camera at a group of people: centre on them, look along the axis where the group is thinnest
    * (so it spreads across the screen; kept in a raised band so "up" stays up), then take the closest distance
    * where the group fits in 90% of the view, measured with real perspective.
    */
-  const fitTo = (group: any[], ms: number) => {
+  const fitTo = (group: any[], ms: number, keepDirection = true) => {
     const g = graph.current;
     const pts = group.filter((n) => n.x != null).map((n) => new THREE.Vector3(n.x, n.y, n.z));
     if (!g || !pts.length) return;
     const center = pts.reduce((c, p) => c.add(p), new THREE.Vector3()).divideScalar(pts.length);
-    let dir = new THREE.Vector3(0.35, 0.35, 0.87).normalize();
-    if (pts.length >= 3) {
+    // Level filters and Reset keep the current angle (zoom only); the first view picks a good angle.
+    let dir = keepDirection ? viewDir() : new THREE.Vector3(0.35, 0.35, 0.87).normalize();
+    if (!keepDirection && pts.length >= 3) {
       let best = Infinity;
       for (let i = 0; i < 120; i++) {
         const y = 1 - (2 * (i + 0.5)) / 120, r = Math.sqrt(1 - y * y), t = i * 2.399963; // Fibonacci sphere
@@ -182,8 +220,7 @@ export function Graph(props: {
         else lo = mid;
       }
     } else hi = lo;
-    const pos = center.clone().addScaledVector(dir, hi);
-    g.cameraPosition({ x: pos.x, y: pos.y, z: pos.z }, { x: center.x, y: center.y, z: center.z }, ms);
+    moveCamera(center.clone().addScaledVector(dir, hi), center, ms);
   };
   const stopOrbit = () => {
     st.current.rotateOff = true;
@@ -300,7 +337,8 @@ export function Graph(props: {
     controls.autoRotateSpeed = 0.5;
     controls.enableDamping = true;
     let idle: number | undefined;
-    controls.addEventListener("start", () => (clearTimeout(idle), (controls.autoRotate = false)));
+    // Grabbing the map stops any camera glide in progress, so the user is always in control.
+    controls.addEventListener("start", () => (clearTimeout(idle), cancelAnimationFrame(glide.current), (controls.autoRotate = false)));
     controls.addEventListener("end", () => {
       clearTimeout(idle);
       idle = window.setTimeout(() => (controls.autoRotate = rotating()), 6000);
@@ -421,7 +459,7 @@ export function Graph(props: {
     applyDim();
     if (firstData.current) {
       firstData.current = false;
-      setTimeout(() => fitTo(st.current.nodes, 0), 50); // open on a view of everyone, once the layout has positions
+      setTimeout(() => fitTo(st.current.nodes, 0, false), 50); // open on a view of everyone, once the layout has positions
     }
   }, [props.data]);
 
