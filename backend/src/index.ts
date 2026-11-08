@@ -17,6 +17,13 @@ const server = app.listen(config.port, config.host, () => {
   if (config.schedulerEnabled) services.scheduler.start();
 });
 
+// Without this, a busy port leaves a backend that runs but serves nothing.
+server.on("error", (err: NodeJS.ErrnoException) => {
+  console.error(err.code === "EADDRINUSE" ? `[resona] port ${config.port} is already in use; is another copy running?` : `[resona] server error: ${err.message}`);
+  services.close();
+  process.exit(1);
+});
+
 function shutdown(signal: string) {
   console.log(`[resona] ${signal} received, shutting down`);
   server.close(() => {
