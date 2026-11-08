@@ -11,17 +11,18 @@ export const CREDENTIALS = {
 } as const;
 export type CredentialName = keyof typeof CREDENTIALS;
 
+/** Keyed by Keychain account name: a CredentialName, or another app secret such as the ChatGPT token set. */
 export interface SecretStore {
-  get(name: CredentialName): Promise<string | null>;
-  set(name: CredentialName, value: string): Promise<void>;
-  delete(name: CredentialName): Promise<void>;
+  get(name: string): Promise<string | null>;
+  set(name: string, value: string): Promise<void>;
+  delete(name: string): Promise<void>;
 }
 
 const SERVICE = "Resona";
 
 /** macOS login Keychain via the built-in `security` CLI. Values never touch the database, vault or logs. */
 export class KeychainStore implements SecretStore {
-  async get(name: CredentialName): Promise<string | null> {
+  async get(name: string): Promise<string | null> {
     try {
       const { stdout } = await run("/usr/bin/security", ["find-generic-password", "-s", SERVICE, "-a", name, "-w"]);
       return stdout.trim() || null;
@@ -29,24 +30,24 @@ export class KeychainStore implements SecretStore {
       return null; // not found, or not on macOS
     }
   }
-  async set(name: CredentialName, value: string): Promise<void> {
+  async set(name: string, value: string): Promise<void> {
     // shortcut: `-w <value>` is briefly visible to local `ps`; upgrade to a native Keychain API in the Tauri app.
     await run("/usr/bin/security", ["add-generic-password", "-U", "-s", SERVICE, "-a", name, "-l", `${SERVICE} ${name}`, "-w", value]);
   }
-  async delete(name: CredentialName): Promise<void> {
+  async delete(name: string): Promise<void> {
     await run("/usr/bin/security", ["delete-generic-password", "-s", SERVICE, "-a", name]).catch(() => {});
   }
 }
 
 export class MemoryStore implements SecretStore {
-  readonly values = new Map<CredentialName, string>();
-  async get(name: CredentialName) {
+  readonly values = new Map<string, string>();
+  async get(name: string) {
     return this.values.get(name) ?? null;
   }
-  async set(name: CredentialName, value: string) {
+  async set(name: string, value: string) {
     this.values.set(name, value);
   }
-  async delete(name: CredentialName) {
+  async delete(name: string) {
     this.values.delete(name);
   }
 }

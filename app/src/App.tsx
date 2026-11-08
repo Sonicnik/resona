@@ -304,7 +304,7 @@ export default function App() {
             <div className="spacer" />
             <button className="status" onClick={togglePause} title={paused ? "Resume the agent" : "Pause the agent"}>
               <span className="dot" />
-              <span>{STATUS_TEXT[agentState]}{!status?.ai?.available && !status?.offline ? " · AI offline" : ""}</span>
+              <span>{STATUS_TEXT[agentState]}{status?.offline ? "" : !status?.ai?.available ? " · AI offline" : status.ai.provider === "chatgpt" ? " · Using ChatGPT plan" : " · Claude"}</span>
             </button>
           </nav>
 

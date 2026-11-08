@@ -14,7 +14,7 @@ Needs Node 22.13+. From the repository root:
 
 It installs what's missing, starts the backend on demo data, seeds it once, and opens http://localhost:1420. Ctrl+C stops everything. Demo data lives in `~/.resona-demo` (delete it to reset); `./start.sh --real` uses your real data instead, without seeding.
 
-To turn on AI, open **Privacy → Claude → Connect**: it opens the Anthropic key page in your browser, and the key you paste is stored in your macOS Keychain, never in this repository.
+To turn on AI, open **Privacy** and either choose **Continue with ChatGPT** to use your ChatGPT Plus or Pro plan (OpenAI's sign-in, preview), or **Claude → Connect** to paste an Anthropic API key. Tokens and keys are stored in your macOS Keychain, never in this repository. Then allow AI per folder.
 
 ## How it works
 

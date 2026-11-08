@@ -36,6 +36,8 @@ const SETTINGS = {
   "schedule.vaultSync.enabled": z.boolean(),
   "ai.disabled": z.boolean(),
   "agent.paused": z.boolean(),
+  "ai.provider": z.enum(["anthropic", "chatgpt"]),
+  "ai.chatgptModel": z.string().max(100),
 } as const;
 const SETTING_DEFAULTS: Record<keyof typeof SETTINGS, unknown> = {
   "schedule.discovery.enabled": false,
@@ -43,6 +45,8 @@ const SETTING_DEFAULTS: Record<keyof typeof SETTINGS, unknown> = {
   "schedule.vaultSync.enabled": true,
   "ai.disabled": false,
   "agent.paused": false,
+  "ai.provider": "anthropic",
+  "ai.chatgptModel": "",
 };
 
 export function apiRouter(s: Services): Router {
@@ -56,7 +60,7 @@ export function apiRouter(s: Services): Router {
   r.get("/status", (_req, res) => {
     const count = (sql: string) => Number(s.db.get<{ n: number }>(sql)?.n ?? 0);
     res.json({
-      ai: { available: s.ai.isAvailable(), provider: "anthropic", model: s.ai.model },
+      ai: { available: s.ai.isAvailable(), provider: s.ai.provider, model: s.ai.model },
       storage: { dataDir: s.config.dataDir, database: s.config.dbPath, vault: s.config.vaultDir },
       counts: {
         projects: count("SELECT COUNT(*) AS n FROM projects"),
@@ -138,6 +142,30 @@ export function apiRouter(s: Services): Router {
     delete process.env[CREDENTIALS[name]];
     if (name === "anthropic") s.ai.resetClient();
     res.json(credentialStatus(name));
+  });
+
+  // ---------- Sign in with ChatGPT (ChatGPT plan usage) ----------
+  r.get("/chatgpt", (_req, res) => {
+    res.json(s.chatgpt.status());
+  });
+
+  r.post("/chatgpt/sign-in", async (_req, res) => {
+    res.json({ url: await s.chatgpt.startSignIn() });
+  });
+
+  r.post("/chatgpt/cancel", (_req, res) => {
+    s.chatgpt.cancelSignIn();
+    res.json(s.chatgpt.status());
+  });
+
+  r.post("/chatgpt/sign-out", async (_req, res) => {
+    await s.chatgpt.signOut();
+    if (s.ai.provider === "chatgpt") s.db.setSetting("ai.provider", "anthropic");
+    res.json(s.chatgpt.status());
+  });
+
+  r.get("/chatgpt/models", async (_req, res) => {
+    res.json(await s.chatgpt.models());
   });
 
   // ---------- native picker (Finder dialog on this Mac) ----------

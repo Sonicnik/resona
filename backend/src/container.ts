@@ -19,6 +19,7 @@ import { scanProject, type ScanResult } from "./ingestion/scanner.ts";
 import { FolderWatcher } from "./ingestion/watcher.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
 import { KeychainStore, macChooser, type Chooser, type SecretStore } from "./system/mac.ts";
+import { ChatGptAuth } from "./ai/chatgpt.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -44,6 +45,7 @@ export interface Services {
   scheduler: Scheduler;
   secrets: SecretStore;
   chooser: Chooser;
+  chatgpt: ChatGptAuth;
   watcher: FolderWatcher;
   pipeline: Pipeline;
   close(): void;
@@ -89,7 +91,7 @@ export class Pipeline {
   }
 }
 
-export function createServices(config: Config, opts: { db?: Db; ai?: AiService; log?: (m: string) => void; secrets?: SecretStore; chooser?: Chooser } = {}): Services {
+export function createServices(config: Config, opts: { db?: Db; ai?: AiService; log?: (m: string) => void; secrets?: SecretStore; chooser?: Chooser; chatgpt?: ChatGptAuth } = {}): Services {
   const log = opts.log ?? ((m: string) => console.log(`[resona] ${m}`));
   const db = opts.db ?? new Db(config.dbPath);
   const index = new ContentIndex(db, new HashingEmbedder(512, config.embeddingModel));
@@ -115,7 +117,9 @@ export function createServices(config: Config, opts: { db?: Db; ai?: AiService; 
 
   const secrets = opts.secrets ?? new KeychainStore();
   const chooser = opts.chooser ?? macChooser;
-  const base = { config, db, index, ai, summarizer, people, projects, relationships, opportunities, drafts, imports, discovery, review, network, vault, connectors, scheduler, secrets, chooser };
+  const chatgpt = opts.chatgpt ?? new ChatGptAuth(db, secrets, { log });
+  ai.chatgpt = chatgpt;
+  const base = { config, db, index, ai, summarizer, people, projects, relationships, opportunities, drafts, imports, discovery, review, network, vault, connectors, scheduler, secrets, chooser, chatgpt };
   const watcher = new FolderWatcher((projectId) => {
     if (db.getSetting<boolean>("agent.paused", false)) return; // the next rescan after resuming catches up
     void pipeline.processProject(projectId, "watch").catch((err) => log(`watch processing failed: ${err}`));
@@ -169,6 +173,7 @@ export function createServices(config: Config, opts: { db?: Db; ai?: AiService; 
     watcher,
     pipeline,
     close() {
+      chatgpt.cancelSignIn();
       scheduler.stop();
       watcher.closeAll();
       db.close();

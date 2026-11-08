@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, shortDate, useApi, useCtx } from "../api";
 
 const CREDS: Record<string, { title: string; why: string; url: string; placeholder: string }> = {
@@ -61,6 +61,112 @@ export function ConnectSheet({ name, onClose }: { name: string; onClose: () => v
   );
 }
 
+const WELCOME_KEY = "resona.chatgptWelcomeShown";
+
+/** "Continue with ChatGPT": OpenAI's sign-in that lets the app use the user's ChatGPT plan instead of an API key. */
+function ChatGptAccount() {
+  const { act, notify, bump } = useCtx();
+  const cg = useApi<any>("/chatgpt");
+  const d = cg.data;
+  const models = useApi<any[]>(d?.connected ? "/chatgpt/models" : null);
+  const [waiting, setWaiting] = useState(false);
+  const [welcome, setWelcome] = useState(false);
+
+  // While the user finishes in the browser, watch for the loopback callback to complete.
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(async () => {
+      const st = await api("GET", "/chatgpt").catch(() => null);
+      if (!st || st.signingIn) return;
+      setWaiting(false);
+      bump();
+      if (!st.connected) return void (st.error && notify(st.error));
+      let shown = false;
+      try {
+        shown = localStorage.getItem(WELCOME_KEY) === "1";
+      } catch {
+        /* storage blocked: show the welcome again, harmless */
+      }
+      if (shown) notify("Signed in with ChatGPT.");
+      else setWelcome(true); // OpenAI's guidelines: a one-time notice after the first sign-in
+    }, 1500);
+    return () => clearInterval(t);
+  }, [waiting]);
+
+  const start = async () => {
+    const tab = window.open("", "_blank"); // open now: browsers block tabs opened after an await
+    try {
+      const { url } = await api("POST", "/chatgpt/sign-in");
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = url;
+      } else window.open(url, "_blank", "noopener");
+      setWaiting(true);
+    } catch (e) {
+      tab?.close();
+      notify((e as Error).message);
+    }
+  };
+  const cancel = () => act(() => api("POST", "/chatgpt/cancel")).then(() => setWaiting(false));
+  const signOut = () => act(() => api("POST", "/chatgpt/sign-out"), "Signed out of ChatGPT. The app no longer uses your plan.");
+  const gotIt = () => {
+    try {
+      localStorage.setItem(WELCOME_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    setWelcome(false);
+  };
+
+  return (
+    <>
+      <div className="item">
+        <div className="grow">
+          <b>ChatGPT plan</b>
+          <div className="muted">
+            {d?.connected
+              ? `Signed in as ${d.email ?? "your account"} · eligible usage counts toward your ChatGPT plan, separate from anything this app charges`
+              : d?.signedIn
+                ? "Signed in, but plan usage wasn't granted. Sign in again and allow it."
+                : "Use your ChatGPT Plus or Pro plan instead of an API key. This app can't see your ChatGPT conversations."}
+          </div>
+          {d?.connected && models.data && (
+            <select className="field" style={{ width: 220, height: 26, marginTop: 6 }} aria-label="ChatGPT model" value={d.model ?? models.data[0]?.slug ?? ""}
+              onChange={(e) => act(() => api("PATCH", "/settings", { "ai.chatgptModel": e.target.value }), "Model updated.")}>
+              {models.data.map((m) => <option key={m.slug} value={m.slug}>{m.displayName}</option>)}
+            </select>
+          )}
+          {d?.error && !waiting && <div className="err" role="alert">{d.error}</div>}
+        </div>
+        {d?.connected ? (
+          <>
+            <a className="btn" href={d.usageUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Manage usage</a>
+            <button className="btn" onClick={signOut}>Sign out</button>
+          </>
+        ) : waiting ? (
+          <>
+            <span className="muted">Finish signing in in the browser tab…</span>
+            <button className="btn ghost" onClick={cancel}>Cancel</button>
+          </>
+        ) : (
+          <button className="btn primary" onClick={start}>Continue with ChatGPT</button>
+        )}
+      </div>
+      {welcome && (
+        <div className="sheet-modal" role="dialog" aria-modal="true" aria-label="You're using your ChatGPT plan">
+          <div className="glass thick">
+            <h2 style={{ fontSize: 17 }}>You're using your ChatGPT plan</h2>
+            <p className="muted">Eligible usage in this app uses your ChatGPT plan. Manage usage in your ChatGPT settings.</p>
+            <div className="opp-actions">
+              <button className="btn primary" autoFocus onClick={gotIt}>Got it</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Switch({ checked, label, onChange }: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
   return (
     <label className="switch">
@@ -98,7 +204,7 @@ export function Privacy({ onConnect }: { onConnect: (name: string) => void }) {
   const projects = useApi<any[]>("/projects");
   const history = useApi<any[]>("/processing-history?limit=50");
   const creds = useApi<any[]>("/credentials");
-  const settings = useApi<Record<string, boolean>>("/settings");
+  const settings = useApi<Record<string, any>>("/settings");
   const names = new Map((projects.data ?? []).map((p) => [p.id, p.name]));
   return (
     <div className="sheet glass lit">
@@ -121,6 +227,21 @@ export function Privacy({ onConnect }: { onConnect: (name: string) => void }) {
 
       <div className="section-title">Accounts and keys</div>
       <div className="list">
+        <div className="item">
+          <div className="grow">
+            <b>Use AI from</b>
+            <div className="muted">Which account the agent uses for summaries, drafts and fit checks.</div>
+          </div>
+          <div className="seg glass thin" role="group" aria-label="AI provider">
+            {[["anthropic", "Claude API key"], ["chatgpt", "ChatGPT plan"]].map(([id, label]) => (
+              <button key={id} aria-pressed={(settings.data?.["ai.provider"] ?? "anthropic") === id}
+                onClick={() => act(() => api("PATCH", "/settings", { "ai.provider": id }), `The agent now uses ${label === "ChatGPT plan" ? "your ChatGPT plan" : "your Claude API key"}.`)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <ChatGptAccount />
         {(creds.data ?? []).map((c) => (
           <div className="item" key={c.name}>
             <div className="grow">

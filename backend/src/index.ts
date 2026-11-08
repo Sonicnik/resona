@@ -7,13 +7,14 @@ const config = loadConfig();
 const services = createServices(config);
 // Keys connected in the app live in the macOS Keychain, never in the repo, .env, database or vault.
 await loadCredentials(services.secrets);
+await services.chatgpt.load();
 const app = createApp(services);
 
 const server = app.listen(config.port, config.host, () => {
   console.log(`[resona] API listening on http://${config.host}:${config.port}/api`);
   console.log(`[resona] database: ${config.dbPath}`);
   console.log(`[resona] vault:    ${config.vaultDir}`);
-  console.log(`[resona] AI:       ${services.ai.isAvailable() ? `enabled (${config.ai.model})` : "offline mode (no Claude credentials)"}`);
+  console.log(`[resona] AI:       ${services.ai.isAvailable() ? `enabled (${services.ai.provider === "chatgpt" ? "ChatGPT plan" : config.ai.model})` : "offline mode (connect Claude or ChatGPT in Privacy)"}`);
   if (config.schedulerEnabled) services.scheduler.start();
 });
 
