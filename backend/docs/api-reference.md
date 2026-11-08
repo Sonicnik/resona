@@ -176,6 +176,8 @@ Returns the last discovery report.
 ### `GET /opportunities?state=new|shortlisted|dismissed|acted_on&projectId=&personId=&minRelevance=&limit=`
 Results are sorted by `relevance` (0-1). Each opportunity has:
 - `scenario`: one of `problem_described`, `wish_for_tool`, `recommendation_request`, `manual_workflow`, `adjacent_product`, `technical_question`, `method_published`, `examples_requested`, `open_source_issue`, `hiring`, `collaborator_search`, `past_contact_followup`, `general_discussion`.
+- `situation`: `{ headline, gist, source }`, a short summary for the card. `headline` is the post's title (prefixed `Pull request ·` / `Issue ·` on GitHub; Hacker News comments read `Re: <thread>`), and `gist` is the one sentence that best states what the author needs (at most 180 characters, extracted locally). After `POST /opportunities/:id/assess`, `gist` is the AI's own one-sentence summary and `source` is `ai`. `post.url` links to the exact post or comment.
+- `why`: one line, e.g. `Jane asks for recommendations · fits rag-eval · shared: recall, rag`; after an AI fit check it is the AI's reason. `suggestion`: the suggested kind of contribution.
 - `matchReason`, `suggestedChannel`, `suggestedAction`.
 - `flags`, for example "discussion appears resolved", "author asked not to be pitched", "you have already contacted this person recently", or "post asks for something the project lists as a limitation".
 - `evidence`: project file excerpts with `ref`.
