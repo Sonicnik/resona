@@ -293,3 +293,4 @@ select.field { appearance: none; }
 .sit-links summary { cursor: default; color: var(--t3); }
 .sit-links details[open] { flex-basis: 100%; }
 .full-text { margin-top: 6px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; color: var(--t2); padding: 8px 10px; border-radius: 8px; background: var(--inset); user-select: text; }
+a.btn { text-decoration: none; color: inherit; }
