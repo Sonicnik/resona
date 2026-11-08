@@ -21,6 +21,8 @@ export interface PersonInput {
   notes?: string | null;
   interests?: string[];
   status?: "prospect" | "contact" | "archived";
+  /** Industry id chosen by the user; null clears it so the industry is inferred again. */
+  industry?: string | null;
 }
 
 export interface PersonRow {
@@ -32,6 +34,7 @@ export interface PersonRow {
   location: string | null;
   notes: string | null;
   interests: string;
+  industry: string | null;
   is_self: number;
   status: string;
   merged_into: string | null;
@@ -62,6 +65,7 @@ export function personToJson(row: PersonRow) {
     location: row.location,
     notes: row.notes,
     interests: parseJson<string[]>(row.interests, []),
+    industry: row.industry ?? null,
     isSelf: row.is_self === 1,
     status: row.status,
     mergedInto: row.merged_into,
@@ -152,6 +156,7 @@ export class PeopleService {
       location: patch.location,
       notes: patch.notes,
       interests: patch.interests,
+      industry: patch.industry,
       status: row.is_self ? undefined : patch.status,
     };
     const sets: string[] = [];

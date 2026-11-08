@@ -236,7 +236,7 @@ An approved draft, a sent message, a received reply and an accepted connection s
 | POST | `/people` | `{ displayName, bio?, organization?, title?, location?, notes?, interests?, status?, profiles?[] }` | |
 | GET | `/people/duplicates` | | Merge candidates (same email, or same name and organization). Never merged automatically. |
 | GET | `/people/:id` | | **Person detail** (see below). |
-| PATCH | `/people/:id` | person fields | |
+| PATCH | `/people/:id` | person fields, plus `industry` | `industry` sets the person's network group (an id from `industries` in `GET /network/graph`, e.g. `"robotics"`); `null` goes back to the inferred one. |
 | DELETE | `/people/:id` | | The self record cannot be deleted. |
 | POST | `/people/:id/profiles` | `{ platform, url?, handle?, externalId?, displayName?, headline?, email? }` | Returns 409 if the profile belongs to someone else (merge instead). |
 | DELETE | `/profiles/:id` | | |
@@ -283,7 +283,9 @@ The `suggest-followups` job adds `origin: "suggested"` follow-ups for 1:1 messag
 {
   "selfId": "per_…",
   "nodes": [{ "id", "label", "isSelf", "status", "organization", "interests", "platforms", "tieStrength", "lastInteractionAt",
-              "interactionCount", "pageRank", "bridgeScore", "community", "openOpportunities", "pendingDrafts", "openFollowups", "projectIds" }],
+              "interactionCount", "pageRank", "bridgeScore", "community", "openOpportunities", "pendingDrafts", "openFollowups", "projectIds",
+              "industry": { "id", "name", "source": "user|inferred" } | null }],
+  "industries": [{ "id", "name" }],
   "edges": [{ "id", "kind": "relationship|interaction|proposed", "from", "to", "directed", "establishesRelationship",
               "strength", "label", "explanation", "evidence": [ … ] }],
   "ties": [{ "a", "b", "strength", "directedOnly" }],

@@ -7,6 +7,7 @@ import { personToJson } from "../services/people.ts";
 import { contextToJson, projectToJson, ProjectService } from "../services/projects.ts";
 import type { ChunkSource } from "../search/index.ts";
 import { CREDENTIALS, type CredentialName } from "../system/mac.ts";
+import { INDUSTRY_BY_ID } from "../network/industries.ts";
 
 const profileSchema = z.object({
   platform: z.string().min(1),
@@ -26,6 +27,11 @@ const personFields = {
   location: z.string().nullish(),
   notes: z.string().nullish(),
   interests: z.array(z.string()).optional(),
+  /** Network group override; null goes back to the inferred industry. */
+  industry: z
+    .string()
+    .refine((v) => INDUSTRY_BY_ID.has(v), "unknown industry")
+    .nullish(),
 };
 
 const isoDate = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "must be an ISO date");

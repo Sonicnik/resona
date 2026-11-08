@@ -362,4 +362,6 @@ export const MIGRATIONS: string[] = [
   `,
   // An AI-written one-sentence summary of the post, set by the optional fit check.
   `ALTER TABLE opportunities ADD COLUMN situation TEXT;`,
+  // Industry chosen by the user for a person (network groups). NULL means "infer it".
+  `ALTER TABLE people ADD COLUMN industry TEXT;`,
 ];

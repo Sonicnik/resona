@@ -189,11 +189,20 @@ async function main() {
   }
 
   // Extra first-degree connections, as from a LinkedIn archive export.
-  const extra = ["Ana,Silva,CS student", "Ben,Carter,Hackathon organiser", "Ines,Duarte,Researcher", "Yuki,Sato,Backend engineer", "Zara,Ali,ML researcher", "Maya,Cohen,Developer advocate"];
+  // First name, last name, position, company: a spread of industries for the network's group filter.
+  const extra = [
+    "Ana,Silva,Robotics engineer,Kinetica Robotics",
+    "Yuki,Sato,Embedded engineer,Kinetica Robotics",
+    "Ben,Carter,Quant analyst,Harbor Capital",
+    "Leo,Park,Fintech product manager,Ledgerline",
+    "Ines,Duarte,Biomedical researcher,Northlake Health",
+    "Zara,Ali,ML researcher,",
+    "Maya,Cohen,Developer advocate,",
+  ];
   const csv = `Notes:\n"Demo export"\n\nFirst Name,Last Name,URL,Email Address,Company,Position,Connected On\n${extra
     .map((e) => {
-      const [f = "", l = "", pos = ""] = e.split(",");
-      return `${f},${l},https://www.linkedin.com/in/demo-${f.toLowerCase()}-${l.toLowerCase()},,,${pos},01 Oct 2026`;
+      const [f = "", l = "", pos = "", company = ""] = e.split(",");
+      return `${f},${l},https://www.linkedin.com/in/demo-${f.toLowerCase()}-${l.toLowerCase()},,${company},${pos},01 Oct 2026`;
     })
     .join("\n")}\n`;
   await api("POST", "/imports/linkedin-archive", { files: { "Connections.csv": csv } });

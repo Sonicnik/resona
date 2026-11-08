@@ -35,6 +35,23 @@ export function levelOf(tie: number | undefined): number {
 }
 console.assert(levelOf(0) === 0 && levelOf(0.121) === 1 && levelOf(0.234) === 2 && levelOf(0.419) === 3 && levelOf(0.477) === 4 && levelOf(0.68) === 5, "level thresholds");
 
+/** Tie strength from which someone counts as "Close" (the only closeness group in the filter). */
+export const CLOSE_MIN = 0.45;
+
+/**
+ * Network groups: "all", "close" (strong ties), or an industry ("ind:robotics", "ind:other" for
+ * people without one). You are always in every group, so the map stays anchored on you.
+ */
+export function inGroup(n: any, filter: string): boolean {
+  if (!n) return false;
+  if (n.isSelf || filter === "all") return true;
+  if (filter === "close") return (n.tieStrength ?? 0) >= CLOSE_MIN;
+  if (filter === "ind:other") return !n.industry;
+  if (filter.startsWith("ind:")) return n.industry?.id === filter.slice(4);
+  return true;
+}
+console.assert(inGroup({ tieStrength: 0.5 }, "close") && !inGroup({ tieStrength: 0.44 }, "close") && inGroup({ isSelf: true }, "ind:x") && inGroup({ industry: null }, "ind:other"), "groups");
+
 /** Stable 0–1 value per id, for per-person variation that doesn't change between reloads. */
 function hash(id: string): number {
   let h = 2166136261;
@@ -104,6 +121,8 @@ export function Graph(props: {
     freeFlight: props.freeFlight,
     rotateOff: false, // set by Reset: the map stays still from then on
     inset: 0, // px of canvas hidden behind the sidebar
+    insetTop: 0, // px hidden behind the toolbar
+    insetBottom: 0, // px taken by the legend and hint bars
     mouse: null as { x: number; y: number } | null,
     nodes: [] as any[],
     links: [] as any[],
@@ -112,12 +131,7 @@ export function Graph(props: {
   const firstData = useRef(true);
   cb.current = props;
 
-  // "all" | "connected" | "1".."5": a level shows exactly that level; unconnected people appear only under "all".
-  const visible = (n: any) => {
-    if (!n || n.isSelf || st.current.filter === "all") return true;
-    const lv = levelOf(n.tieStrength);
-    return st.current.filter === "connected" ? lv > 0 : lv === Number(st.current.filter);
-  };
+  const visible = (n: any) => !n || inGroup(n, st.current.filter);
   // The map orbits slowly only while nobody is selected: a selected person stays put.
   const rotating = () => !st.current.freeFlight && !st.current.rotateOff && !st.current.selected && !reduceMotion;
   const applyDim = () => {
@@ -126,7 +140,14 @@ export function Graph(props: {
     s.focus = focusId ? new Set([focusId, ...s.links.flatMap((l) => (endId(l.source) === focusId ? [endId(l.target)] : endId(l.target) === focusId ? [endId(l.source)] : []))]) : null;
     for (const n of s.nodes) {
       if (!n.__core) continue;
-      n.__dim = (visible(n) ? 1 : 0.08) * (!s.focus || s.focus.has(n.id) ? 1 : 0.15);
+      // People outside the shown group stay faintly visible for context but can't be hovered or clicked:
+      // their objects are skipped by the mouse ray, so they also never block someone in the group behind them.
+      const inside = visible(n);
+      n.__threeObj?.traverse((o: any) => {
+        o.__raycast ??= o.raycast;
+        o.raycast = inside ? o.__raycast : () => {};
+      });
+      n.__dim = (inside ? 1 : 0.08) * (!s.focus || s.focus.has(n.id) ? 1 : 0.15);
       n.__core.material.opacity = n.__dim;
       n.__halo.material.opacity = n.__haloBase * n.__dim;
     }
@@ -199,16 +220,20 @@ export function Graph(props: {
     }
     const share = pts.length > 20 ? 0.95 : 1; // big groups may leave a few stragglers at the edge
     const probe = g.camera().clone();
-    // The sidebar covers the left of the canvas: measure fit against the uncovered area (see applyInset).
-    const c = st.current.inset / Math.max(1, g.width()); // screen-space centre of the uncovered area
+    // The sidebar, toolbar and bottom bars cover parts of the canvas: measure fit against the uncovered
+    // area only (see applyInset), so nobody ends up hidden behind the toolbar.
+    const W = Math.max(1, g.width()), H = Math.max(1, g.height());
+    const c = st.current.inset / W; // NDC centre of the uncovered area, x
     const halfW = 1 - c;
+    const cy = (st.current.insetBottom - st.current.insetTop) / H; // and y
+    const halfH = 1 - (st.current.insetTop + st.current.insetBottom) / H;
     const fits = (d: number) => {
       probe.position.copy(center).addScaledVector(dir, d);
       probe.lookAt(center);
       probe.updateMatrixWorld();
       const reach = pts.map((p) => {
         const v = p.clone().project(probe);
-        return v.z > 1 ? Infinity : Math.max(Math.abs(v.x - c) / halfW, Math.abs(v.y));
+        return v.z > 1 ? Infinity : Math.max(Math.abs(v.x - c) / halfW, Math.abs(v.y - cy) / halfH);
       }).sort((a, b) => a - b);
       return (reach[Math.ceil(reach.length * share) - 1] ?? 0) <= 0.9;
     };
@@ -275,23 +300,32 @@ export function Graph(props: {
       .linkDirectionalParticleWidth(0.7)
       .linkDirectionalParticleSpeed(0.004)
       .linkDirectionalParticleColor(() => "#d8fbff")
-      .onNodeHover((n: any) => {
+      .onNodeHover((hit: any) => {
+        const n = hit && visible(hit) ? hit : null; // outside the shown group: no hover
         div.style.cursor = n && !n.isSelf ? "pointer" : "";
         st.current.hovered = n?.id ?? null;
         applyDim();
       })
-      .onNodeClick((n: any) => (n.isSelf ? flyTo(n.id) : cb.current.onSelect(n.id)))
-      .onNodeRightClick((n: any, ev: MouseEvent) => !n.isSelf && cb.current.onMenu(n, ev))
+      .onNodeClick((n: any) => {
+        if (!visible(n)) return; // outside the shown group: ignore
+        if (n.isSelf) flyTo(n.id);
+        else cb.current.onSelect(n.id);
+      })
+      .onNodeRightClick((n: any, ev: MouseEvent) => visible(n) && !n.isSelf && cb.current.onMenu(n, ev))
       .onBackgroundClick(() => cb.current.onSelect(null));
     const noMenu = (e: Event) => e.preventDefault();
     div.addEventListener("contextmenu", noMenu);
     // Centre the view on the part of the canvas the sidebar doesn't cover.
     const applyInset = () => {
       const side = document.querySelector(".sidebar")?.getBoundingClientRect();
+      const bar = document.querySelector(".toolbar")?.getBoundingClientRect();
       const box = div.getBoundingClientRect();
       st.current.inset = side ? Math.max(0, side.right - box.left) : 0;
+      st.current.insetTop = bar ? Math.max(0, bar.bottom - box.top + 8) : 0;
+      st.current.insetBottom = 56;
       const cam = g.camera(), w = div.clientWidth, h = div.clientHeight;
-      cam.setViewOffset(w, h, -st.current.inset / 2, 0, w, h);
+      // Shift the projection so the centre of the view is the centre of the uncovered area.
+      cam.setViewOffset(w, h, -st.current.inset / 2, -(st.current.insetTop - st.current.insetBottom) / 2, w, h);
       cam.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(() => {

@@ -68,6 +68,27 @@ export function Person({ id, names, onClose, onDraftedFollowup }: { id: string |
             {badge && <span className={`badge ${badge[1]}`}>{badge[0]}</span>}
           </div>
 
+          {!cur.person.isSelf && (
+            <label className="industry-pick">
+              <span>Group</span>
+              <select
+                className="field"
+                aria-label="Industry group"
+                value={cur.metrics?.industry?.source === "user" ? cur.metrics.industry.id : ""}
+                onChange={(e) =>
+                  act(() => api("PATCH", `/people/${id}`, { industry: e.target.value || null }), e.target.value ? "Group updated. The network filter uses it now." : "Group set back to automatic.")
+                }
+              >
+                <option value="">
+                  {cur.metrics?.industry?.source === "inferred" ? `Automatic: ${cur.metrics.industry.name}` : "Automatic"}
+                </option>
+                {(cur.industries ?? []).map((i: any) => (
+                  <option key={i.id} value={i.id}>{i.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <div className="panel-section">
             <h3>How you found them</h3>
             <p style={{ color: "var(--t2)" }}>

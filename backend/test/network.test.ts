@@ -151,3 +151,33 @@ test("identity: dedupe by profile URL, never by name; explicit merge moves refer
   assert.equal(s.relationships.listRelationships(a.person.id).length, 1);
   s.close();
 });
+
+test("industry groups: inferred from profile and posts, user override wins, never on yourself", async () => {
+  const { inferIndustry } = await import("../src/network/industries.ts");
+  assert.equal(inferIndustry({ profile: ["Robotics engineer", "Kinetica Robotics"], about: [], posts: [] }), "robotics");
+  assert.equal(inferIndustry({ profile: ["Quant analyst", "Harbor Capital"], about: [], posts: [] }), "finance");
+  assert.equal(inferIndustry({ profile: ["ML engineer"], about: [], posts: [] }), "ai", "specific beats generic 'engineer'");
+  assert.equal(inferIndustry({ profile: ["Fintech product manager"], about: [], posts: [] }), "finance", "overlapping terms don't stack");
+  assert.equal(inferIndustry({ profile: ["Ivy"], about: [], posts: ["hello"] }), null);
+
+  const s = makeServices();
+  const ana = s.people.create({ displayName: "Ana", title: "Robotics engineer" });
+  const ben = s.people.create({ displayName: "Ben" });
+  s.opportunities.ingestPost({
+    platform: "x", externalId: "1", connector: "manual", text: "Our trading desk is hiring a quant to work on payments and banking risk.",
+    author: { platform: "x", externalId: "ben", displayName: "Ben" },
+  });
+  const g1 = s.network.graph();
+  const node = (id: string) => g1.nodes.find((n) => n.id === id)!;
+  assert.deepEqual(node(ana.id).industry, { id: "robotics", name: "Robotics", source: "inferred" });
+  assert.equal(node(s.people.selfId()).industry, null);
+  const postAuthor = g1.nodes.find((n) => n.label === "Ben" && n.id !== ben.id)!;
+  assert.equal(postAuthor.industry?.id, "finance", "posts alone can place someone");
+  assert.ok(g1.industries.some((i) => i.id === "finance"));
+
+  s.people.update(ana.id, { industry: "finance" });
+  assert.deepEqual(s.network.graph().nodes.find((n) => n.id === ana.id)!.industry, { id: "finance", name: "Finance", source: "user" });
+  s.people.update(ana.id, { industry: null });
+  assert.equal(s.network.graph().nodes.find((n) => n.id === ana.id)!.industry?.source, "inferred");
+  s.close();
+});

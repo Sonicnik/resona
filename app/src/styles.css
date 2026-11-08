@@ -402,3 +402,17 @@ a.btn { text-decoration: none; color: inherit; }
   /* Fade the end of a filter bar that scrolls, so it's clear there are more choices. */
   .toolbar .seg { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
 }
+
+/* Person inspector: industry group picker. */
+.industry-pick { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--t3); }
+.industry-pick .field { flex: 1; height: 28px; background: rgba(0,0,0,.25) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aaa' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center; padding-right: 26px; color: var(--t1); }
+.industry-pick option { background: #1b1530; }
+
+/* Network group filter: "More" menu styled like a segment button. */
+.toolbar .seg-more-wrap { flex: none; overflow: visible; mask-image: none; }
+.seg-more { flex: none; appearance: none; border: 0; height: 26px; padding: 0 24px 0 12px; border-radius: 99px; font-size: 12.5px; color: var(--t2);
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aaa' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center; cursor: pointer; }
+.seg-more:hover { color: var(--t1); }
+.seg-more[data-active] { background-color: rgba(255,255,255,.18); color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,.25), inset 0 .5px 0 rgba(255,255,255,.2); }
+.seg-more:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(139,92,246,.55); }
+.seg-more option { background: #1b1530; color: #fff; }

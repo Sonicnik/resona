@@ -14,6 +14,7 @@ import {
   pageRank,
   type WEdge,
 } from "./algorithms.ts";
+import { INDUSTRIES, INDUSTRY_BY_ID, inferIndustry } from "./industries.ts";
 
 /** Interaction weights for tie strength. Replies received and meetings say more than one-way messages. */
 const INTERACTION_WEIGHT: Record<string, { outbound: number; inbound: number; mutual: number; none: number }> = {
@@ -85,6 +86,8 @@ export interface NetworkNode {
   pendingDrafts: number;
   openFollowups: number;
   projectIds: string[];
+  /** Network group. `source` is "user" when chosen on the person, else "inferred" from their profile and posts. */
+  industry: { id: string; name: string; source: "user" | "inferred" } | null;
 }
 
 export interface InterestLink {
@@ -307,6 +310,31 @@ export class NetworkService {
       personProjects.set(r.person_id, set);
     }
 
+    // Signals for industry groups: profile headlines and the text of each person's posts.
+    const headlines = new Map<string, string[]>();
+    for (const r of this.db.all<{ person_id: string; headline: string }>("SELECT person_id, headline FROM person_profiles WHERE headline IS NOT NULL")) {
+      headlines.set(r.person_id, [...(headlines.get(r.person_id) ?? []), r.headline]);
+    }
+    const postsBy = new Map<string, string[]>();
+    for (const r of this.db.all<{ author_person_id: string; text: string }>(
+      "SELECT author_person_id, substr(COALESCE(title, '') || ' ' || text, 1, 2000) AS text FROM source_posts WHERE author_person_id IS NOT NULL ORDER BY retrieved_at DESC LIMIT 2000",
+    )) {
+      const list = postsBy.get(r.author_person_id) ?? [];
+      if (list.length < 10) postsBy.set(r.author_person_id, [...list, r.text]);
+    }
+    const industryOf = (p: Record<string, unknown>): NetworkNode["industry"] => {
+      const chosen = typeof p.industry === "string" ? INDUSTRY_BY_ID.get(p.industry) : undefined;
+      if (chosen) return { id: chosen.id, name: chosen.name, source: "user" };
+      if (p.is_self === 1) return null;
+      const id = inferIndustry({
+        profile: [String(p.title ?? ""), String(p.organization ?? ""), ...(headlines.get(String(p.id)) ?? [])],
+        about: [String(p.bio ?? ""), ...parseJson<string[]>(p.interests, [])],
+        posts: postsBy.get(String(p.id)) ?? [],
+      });
+      const found = id ? INDUSTRY_BY_ID.get(id) : undefined;
+      return found ? { id: found.id, name: found.name, source: "inferred" } : null;
+    };
+
     let nodes: NetworkNode[] = peopleRows.map((p) => {
       const id = String(p.id);
       const pairKey = [id, selfId].sort().join("|");
@@ -331,6 +359,7 @@ export class NetworkService {
         pendingDrafts: pendingDrafts.get(id) ?? 0,
         openFollowups: openFollowups.get(id) ?? 0,
         projectIds: [...(personProjects.get(id) ?? [])],
+        industry: industryOf(p),
       };
     });
 
@@ -366,6 +395,7 @@ export class NetworkService {
       edges: keptEdges,
       ties,
       communities: [...communities.entries()].map(([id, members]) => ({ id, size: members.length, members })),
+      industries: INDUSTRIES.map((i) => ({ id: i.id, name: i.name })),
       interestLinks: opts.includeInterestLinks ? this.interestLinks(nodes.filter((n) => !n.isSelf)) : [],
       legend: {
         ties: "Combined strength per pair of people (0-1) from relationships and interactions; used for paths.",
@@ -470,6 +500,8 @@ export class NetworkService {
       followups,
       relationships,
       vaultMentions: mentions,
+      /** Choices for the person's industry group (see `metrics.industry` for the current one). */
+      industries: INDUSTRIES.map((i) => ({ id: i.id, name: i.name })),
     };
   }
 

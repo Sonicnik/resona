@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, AppCtx, initials, useCtx, type Ctx, type MenuItem, type Screen } from "./api";
-import { Graph, LEVELS, levelOf, type GraphHandle } from "./Graph";
+import { CLOSE_MIN, Graph, inGroup, type GraphHandle } from "./Graph";
 import { Person } from "./Person";
 import { Home } from "./screens/Home";
 import { Opportunities } from "./screens/Opportunities";
@@ -72,8 +72,15 @@ export default function App() {
   const back = () => setHist((h) => ({ ...h, i: Math.max(0, h.i - 1) }));
   const fwd = () => setHist((h) => ({ ...h, i: Math.min(h.list.length - 1, h.i + 1) }));
 
+  const graphDataRef = useRef<any>(undefined);
+  graphDataRef.current = graphData;
   const openPerson = useCallback((id: string, fly?: boolean) => {
     go("network");
+    // Opening someone outside the group on screen (e.g. from Search) switches back to everyone.
+    setNetFilter((f) => {
+      const n = graphDataRef.current?.nodes?.find((x: any) => x.id === id);
+      return n && !inGroup(n, f) ? "all" : f;
+    });
     setPersonId(id);
     if (fly) setTimeout(() => graph.current?.flyTo(id), 50);
   }, [go]);
@@ -246,16 +253,28 @@ export default function App() {
     return () => removeEventListener("keydown", onKey);
   });
 
-  // Connection levels for the network filter; people with no connection are only in "All".
-  const levelFilters = useMemo(() => {
+  // Network groups: everyone, one "Close" group, then the industries present in your network.
+  const groupFilters = useMemo(() => {
     const people = (graphData?.nodes ?? []).filter((n: any) => !n.isSelf);
-    const count = (lv: number) => people.filter((n: any) => levelOf(n.tieStrength) === lv).length;
+    const industries = new Map<string, { name: string; n: number }>();
+    let other = 0;
+    for (const p of people) {
+      if (!p.industry) other++;
+      else industries.set(p.industry.id, { name: p.industry.name, n: (industries.get(p.industry.id)?.n ?? 0) + 1 });
+    }
     return [
-      ["all", "All", people.length, "Everyone, including people you haven't connected with"],
-      ["connected", "Connected", people.filter((n: any) => levelOf(n.tieStrength) > 0).length, "Levels 1–5"],
-      ...LEVELS.map((l) => [String(l.level), l.name, count(l.level), `Level ${l.level}: tie strength ${l.min > 0 ? `≥ ${l.min}` : "above 0"}`]),
+      ["all", "All", people.length, "Everyone in your network"],
+      ["close", "Close", people.filter((n: any) => inGroup(n, "close")).length, `People you have a strong tie with (tie strength ≥ ${CLOSE_MIN})`],
+      ...[...industries.entries()]
+        .sort((a, b) => b[1].n - a[1].n || a[1].name.localeCompare(b[1].name))
+        .map(([id, { name, n }]) => [`ind:${id}`, name, n, `People in ${name}, from their profile and posts (change it on a person)`]),
+      ...(other ? [["ind:other", "Other", other, "People whose industry isn't clear yet"]] : []),
     ] as Array<[string, string, number, string]>;
   }, [graphData]);
+  // If the group on screen empties (e.g. its last person was moved to another group), show everyone.
+  useEffect(() => {
+    if (graphData && !groupFilters.some(([id]) => id === netFilter)) setNetFilter("all");
+  }, [graphData, groupFilters, netFilter]);
   const resetView = () => {
     setPersonId(null);
     setFreeFlight(false);
@@ -347,13 +366,30 @@ export default function App() {
             </div>
             <div className="tb-title"><h1>{SCREENS.find((s) => s[0] === screen)![1]}</h1><p>{SUBTITLE[screen]}</p></div>
             <div className="tb-spacer" />
-            <div className="seg glass thin" data-for="network" role="group" aria-label="Filter by connection level">
-              {levelFilters.map(([id, name, count, title]) => (
+            <div className="seg glass thin" data-for="network" role="group" aria-label="Filter by group">
+              {groupFilters.slice(0, SHOWN_GROUPS).map(([id, name, count, title]) => (
                 <button key={id} aria-pressed={netFilter === id} title={title} onClick={() => setNetFilter(id)}>
                   {name} <span className="seg-count">{count}</span>
                 </button>
               ))}
             </div>
+            {groupFilters.length > SHOWN_GROUPS && (
+              // Smaller groups live in a menu outside the scrolling bar, so it's always reachable.
+              <div className="seg glass thin seg-more-wrap" data-for="network">
+                <select
+                  className="seg-more"
+                  aria-label="More groups"
+                  data-active={groupFilters.slice(SHOWN_GROUPS).some(([id]) => id === netFilter) || undefined}
+                  value={groupFilters.slice(SHOWN_GROUPS).some(([id]) => id === netFilter) ? netFilter : ""}
+                  onChange={(e) => e.target.value && setNetFilter(e.target.value)}
+                >
+                  <option value="" disabled>More ({groupFilters.length - SHOWN_GROUPS})</option>
+                  {groupFilters.slice(SHOWN_GROUPS).map(([id, name, count]) => (
+                    <option key={id} value={id}>{name} ({count})</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button className="btn glass thin net-reset" data-for="network" onClick={resetView} title="Zoom out to see everyone and stop orbiting (R)">Reset view</button>
             <div className="seg glass thin" data-for="opps" role="group" aria-label="Filter opportunities">{projectSeg(oppFilter, setOppFilter, ["all", "All"], [["followups", "Follow-ups"]])}</div>
             <div className="seg glass thin" data-for="posts" role="group" aria-label="Platform">
@@ -420,6 +456,9 @@ export default function App() {
     </AppCtx.Provider>
   );
 }
+
+/** All, Close and the three largest industries get buttons; smaller groups go in the "More" menu. */
+const SHOWN_GROUPS = 5;
 
 const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches"];
 const ORBITS = [
