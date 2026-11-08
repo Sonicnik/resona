@@ -3,12 +3,12 @@ import { api, CHANNEL, initials, platformName, shortDate, useApi, useCtx } from 
 import { OpenPost } from "./screens/Opportunities";
 
 const EVENT: Record<string, [string, string]> = {
-  discovered: ["Discovered", "#6b6694"],
-  draft: ["Draft waiting", "#ffd60a"],
-  approved: ["Approved by you", "#a78bfa"],
-  sent: ["Sent", "#c4b5fd"],
-  replied: ["Replied", "#f0abfc"],
-  connected: ["Connected", "#22d3ee"],
+  discovered: ["Discovered", "#5a5a5a"],
+  draft: ["Draft waiting", "#d29922"],
+  approved: ["Approved by you", "#a1a1a1"],
+  sent: ["Sent", "#d4d4d4"],
+  replied: ["Replied", "#3fb950"],
+  connected: ["Connected", "#3b8eea"],
 };
 
 /** Approved, sent, replied and connected stay separate events, as the product requires. */

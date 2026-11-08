@@ -4,10 +4,10 @@ import ForceGraph3D from "3d-force-graph";
 import SpriteText from "three-spritetext";
 
 export type NodeStatus = "you" | "connected" | "interacted" | "prospect";
-const COLOR: Record<NodeStatus, string> = { you: "#ffffff", connected: "#5ee7f5", interacted: "#b4a2ff", prospect: "#8a86a3" };
+const COLOR: Record<NodeStatus, string> = { you: "#ededed", connected: "#3b8eea", interacted: "#8f8f8f", prospect: "#5a5a5a" };
 const RADIUS: Record<NodeStatus, number> = { you: 3.2, connected: 2.2, interacted: 1.8, prospect: 1.3 };
 const HALO: Record<NodeStatus, number> = { you: 0.9, connected: 0.75, interacted: 0.6, prospect: 0.35 };
-const LINK_COLOR: Record<string, string> = { proposed: "#3d3858", interaction: "#7262c4", confirmed: "#2fb4cc" };
+const LINK_COLOR: Record<string, string> = { proposed: "#2a2a2a", interaction: "#555555", confirmed: "#2f74c0" };
 const LINK_KIND: Record<string, string> = { relationship: "confirmed", interaction: "interaction", proposed: "proposed" };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -81,14 +81,14 @@ const glowTexture = () =>
 // Game-style target lock: four arc segments plus a faint inner ring.
 const reticleTexture = () =>
   canvasTexture((g) => {
-    g.strokeStyle = "rgba(200,245,255,.95)";
+    g.strokeStyle = "rgba(190,215,245,.95)";
     g.lineWidth = 5;
     for (let i = 0; i < 4; i++) {
       g.beginPath();
       g.arc(128, 128, 104, (i * Math.PI) / 2 + 0.25, ((i + 1) * Math.PI) / 2 - 0.25);
       g.stroke();
     }
-    g.strokeStyle = "rgba(200,245,255,.35)";
+    g.strokeStyle = "rgba(190,215,245,.35)";
     g.lineWidth = 2;
     g.beginPath();
     g.arc(128, 128, 84, 0, Math.PI * 2);
@@ -280,7 +280,7 @@ export function Graph(props: {
         const halo = (n.__halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: COLOR[status], blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: n.__haloBase })));
         halo.scale.setScalar(r * 9);
         group.add(halo);
-        const label = (n.__label = new SpriteText(n.isSelf ? "You" : n.label, n.isSelf ? 2.8 : 2.1, "rgba(235,235,255,.85)"));
+        const label = (n.__label = new SpriteText(n.isSelf ? "You" : n.label, n.isSelf ? 2.8 : 2.1, "rgba(237,237,237,.85)"));
         label.fontFace = "-apple-system, BlinkMacSystemFont, sans-serif";
         label.fontWeight = "500";
         label.position.y = -(r + 3.2);
@@ -291,7 +291,7 @@ export function Graph(props: {
       })
       .linkColor((l: any) => {
         const f = st.current.focus;
-        return f && !(f.has(endId(l.source)) && f.has(endId(l.target))) ? "#1c1830" : LINK_COLOR[l.kind];
+        return f && !(f.has(endId(l.source)) && f.has(endId(l.target))) ? "#151515" : LINK_COLOR[l.kind];
       })
       .linkWidth(0)
       .linkOpacity(0.7)
@@ -299,7 +299,7 @@ export function Graph(props: {
       .linkDirectionalParticles((l: any) => (l.kind === "confirmed" ? 2 : 0))
       .linkDirectionalParticleWidth(0.7)
       .linkDirectionalParticleSpeed(0.004)
-      .linkDirectionalParticleColor(() => "#d8fbff")
+      .linkDirectionalParticleColor(() => "#cfe3ff")
       .onNodeHover((hit: any) => {
         const n = hit && visible(hit) ? hit : null; // outside the shown group: no hover
         div.style.cursor = n && !n.isSelf ? "pointer" : "";
@@ -359,7 +359,7 @@ export function Graph(props: {
       { initialize: (nodes: any[]) => (simNodes = nodes) },
     );
     g.d3Force("gravity", gravity);
-    g.scene().fog = new THREE.FogExp2(0x0b0819, 0.0022);
+    g.scene().fog = new THREE.FogExp2(0x0a0a0a, 0.0022);
     g.cameraPosition({ x: 0, y: 30, z: 230 });
 
     const reticle = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticleTexture(), transparent: true, depthWrite: false, depthTest: false }));

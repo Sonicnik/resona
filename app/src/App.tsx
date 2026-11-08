@@ -463,8 +463,8 @@ const SHOWN_GROUPS = 5;
 const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches"];
 const ORBITS = [
   { inset: 6, dur: 7, color: "var(--cyan)" },
-  { inset: 20, dur: 4.5, color: "#c4b5fd" },
-  { inset: 34, dur: 3, color: "#f0abfc" },
+  { inset: 20, dur: 4.5, color: "#8f8f8f" },
+  { inset: 34, dur: 3, color: "#ededed" },
 ];
 
 /** Covers and dims the app while a scan runs; the backend calls can't be cancelled, so there is no close button. */
