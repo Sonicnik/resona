@@ -294,3 +294,11 @@ select.field { appearance: none; }
 .sit-links details[open] { flex-basis: 100%; }
 .full-text { margin-top: 6px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; color: var(--t2); padding: 8px 10px; border-radius: 8px; background: var(--inset); user-select: text; }
 a.btn { text-decoration: none; color: inherit; }
+/* Full-screen scan overlay: dims and blocks the app until the scan finishes. */
+.scan-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(5,3,15,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade-in .2s var(--ease); }
+@keyframes fade-in { from { opacity: 0; } }
+.scan-card { width: min(380px, calc(100vw - 32px)); padding: 28px 24px; text-align: center; display: grid; gap: 8px; justify-items: center; outline: none; }
+.scan-card h2 { font-size: 18px; }
+.scan-card p { color: var(--t2); }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--accent-hi); animation: spin .9s linear infinite; margin-bottom: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }

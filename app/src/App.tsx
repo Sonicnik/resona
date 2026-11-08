@@ -91,13 +91,14 @@ export default function App() {
     }
   }, [notify, bump]);
 
-  const [scanning, setScanning] = useState(false);
+  const [scanStep, setScanStep] = useState<string | null>(null); // non-null while a scan runs; shown in the overlay
+  const scanning = scanStep !== null;
   const scan = useCallback(async () => {
     if (scanning) return;
-    setScanning(true);
-    notify("Scanning your folders and searching for new conversations…");
+    setScanStep("Checking your project folders for changes…");
     try {
       await api("POST", "/jobs/rescan-folders/run");
+      setScanStep("Searching for new conversations and scoring them…");
       const r = await api("POST", "/discovery/run", {});
       const failed = r.queries.filter((q: any) => q.error).length;
       const skipped = r.skippedConnectors.map((c: any) => c.id).join(", ");
@@ -109,7 +110,7 @@ export default function App() {
     } catch (e) {
       notify(`Scan failed: ${(e as Error).message}`);
     } finally {
-      setScanning(false);
+      setScanStep(null);
       bump();
     }
   }, [scanning, notify, bump]);
@@ -352,6 +353,7 @@ export default function App() {
         <Person id={screen === "network" ? personId : null} names={names} onClose={() => setPersonId(null)} onDraftedFollowup={() => setOppFilter("followups")} />
       </div>
 
+      {scanStep && <ScanOverlay step={scanStep} />}
       {palette && <Spotlight onClose={() => setPalette(false)} people={graphData?.nodes ?? []} />}
       {connect && <ConnectSheet name={connect} onClose={() => setConnect(null)} />}
       {menu && (
@@ -378,6 +380,26 @@ export default function App() {
         <span className="when">now</span>
       </div>
     </AppCtx.Provider>
+  );
+}
+
+/** Covers and dims the app while a scan runs; the backend calls can't be cancelled, so there is no close button. */
+function ScanOverlay({ step }: { step: string }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSeconds((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="scan-overlay" role="alertdialog" aria-modal="true" aria-busy="true" aria-labelledby="scan-title" aria-describedby="scan-step">
+      <div className="scan-card glass thick" tabIndex={-1} ref={(el) => el?.focus()}>
+        <div className="spinner" aria-hidden="true" />
+        <h2 id="scan-title">Scanning in progress</h2>
+        <p>Please wait. This usually takes under a minute.</p>
+        <p className="muted" id="scan-step" aria-live="polite">{step}</p>
+        <p className="muted">{seconds}s</p>
+      </div>
+    </div>
   );
 }
 
