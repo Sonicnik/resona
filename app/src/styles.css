@@ -294,11 +294,56 @@ select.field { appearance: none; }
 .sit-links details[open] { flex-basis: 100%; }
 .full-text { margin-top: 6px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; color: var(--t2); padding: 8px 10px; border-radius: 8px; background: var(--inset); user-select: text; }
 a.btn { text-decoration: none; color: inherit; }
-/* Full-screen scan overlay: dims and blocks the app until the scan finishes. */
-.scan-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(5,3,15,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade-in .2s var(--ease); }
+/* Full-screen scan overlay: dims and blocks the app until the scan finishes, in the app's glass "star map" style. */
+@property --beam { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.scan-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(60% 50% at 50% 50%, rgba(20,12,48,.35), rgba(4,2,12,.72));
+  backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%); animation: fade-in .3s var(--ease); }
+/* Aurora behind the card */
+.scan-overlay::before, .scan-overlay::after { content: ""; position: absolute; width: 520px; aspect-ratio: 1; border-radius: 50%; filter: blur(90px); opacity: .5; pointer-events: none; animation: drift 9s ease-in-out infinite alternate; }
+.scan-overlay::before { background: #7c3aed; left: calc(50% - 470px); top: calc(50% - 400px); }
+.scan-overlay::after { background: #0891b2; left: calc(50% - 60px); top: calc(50% - 120px); animation-delay: -4s; }
 @keyframes fade-in { from { opacity: 0; } }
-.scan-card { width: min(380px, calc(100vw - 32px)); padding: 28px 24px; text-align: center; display: grid; gap: 8px; justify-items: center; outline: none; }
-.scan-card h2 { font-size: 18px; }
-.scan-card p { color: var(--t2); }
-.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--accent-hi); animation: spin .9s linear infinite; margin-bottom: 6px; }
+
+.scan-card { position: relative; z-index: 1; width: min(400px, calc(100vw - 32px)); padding: 30px 28px 22px; border-radius: 26px; text-align: center; display: grid; gap: 10px; justify-items: center; outline: none;
+  background: linear-gradient(160deg, rgba(40,28,80,.62), rgba(14,10,32,.72));
+  box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.14), inset 0 1px 0 rgba(255,255,255,.18), 0 0 60px rgba(139,92,246,.25);
+  animation: card-in .55s var(--spring); }
+@keyframes card-in { from { opacity: 0; transform: translateY(14px) scale(.94); } }
+/* Light beam running around the edge */
+.scan-card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--beam), transparent 0 62%, rgba(167,139,250,.9) 75%, #5ee7f5 85%, transparent 95%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: beam 3.2s linear infinite; }
+@keyframes beam { to { --beam: 360deg; } }
+
+/* Radar with orbiting stars */
+.radar { position: relative; width: 132px; height: 132px; margin-bottom: 6px; }
+.radar i { position: absolute; border-radius: 50%; }
+.radar .ring { border: 1px solid rgba(196,181,253,.16); box-shadow: inset 0 0 18px rgba(139,92,246,.08); }
+.radar .sweep { inset: 0; background: conic-gradient(from 0deg, transparent 0deg, rgba(94,231,245,.0) 250deg, rgba(94,231,245,.38) 358deg, transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 18%, #000 20%); mask: radial-gradient(circle, transparent 18%, #000 20%); animation: spin 2.4s linear infinite; }
+.radar .orbit { animation: spin 4s linear infinite; }
+.radar .orbit::after { content: ""; position: absolute; top: -3px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c), 0 0 16px var(--c); }
+.radar .core { inset: 56px; background: radial-gradient(circle, #fff 0 35%, #c4b5fd 60%, transparent 72%); box-shadow: 0 0 24px rgba(196,181,253,.9), 0 0 60px rgba(139,92,246,.6); animation: core 1.8s ease-in-out infinite; }
+@keyframes core { 50% { transform: scale(.82); opacity: .75; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.scan-title { font-size: 21px; font-weight: 700; letter-spacing: -.01em; background: linear-gradient(90deg, #fff 0%, #c4b5fd 30%, #5ee7f5 55%, #fff 80%); background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 4s linear infinite; }
+@keyframes shine { to { background-position: -220% 0; } }
+.scan-sub { color: var(--t2); font-size: 13px; margin-top: -4px; }
+
+.scan-steps { list-style: none; display: grid; gap: 8px; width: 100%; margin-top: 8px; text-align: left; }
+.scan-steps li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; font-size: 13px; color: var(--t3);
+  background: rgba(255,255,255,.04); border: .5px solid rgba(255,255,255,.08); transition: color .3s, background .3s, border-color .3s; }
+.scan-steps .dot { width: 18px; height: 18px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; border: 1.5px solid rgba(255,255,255,.2); }
+.scan-steps li.active { color: var(--t1); background: rgba(94,231,245,.07); border-color: rgba(94,231,245,.35); box-shadow: 0 0 22px rgba(94,231,245,.12); }
+.scan-steps li.active .dot { border-color: var(--cyan); background: radial-gradient(circle, var(--cyan) 0 30%, transparent 34%); box-shadow: 0 0 12px var(--cyan); animation: core 1.2s ease-in-out infinite; }
+.scan-steps li.done { color: var(--t2); }
+.scan-steps li.done .dot { border-color: transparent; background: linear-gradient(135deg, #8b5cf6, #22d3ee); color: #fff; }
+
+.scan-bar { width: 100%; height: 3px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 6px; }
+.scan-bar i { display: block; height: 100%; width: 40%; border-radius: inherit; background: linear-gradient(90deg, transparent, #8b5cf6, #5ee7f5, transparent); animation: scan 1.6s ease-in-out infinite; }
+.scan-time { font: 500 11.5px ui-monospace, "SF Mono", Menlo, monospace; color: var(--t3); padding: 3px 10px; border-radius: 99px; background: rgba(255,255,255,.05); border: .5px solid rgba(255,255,255,.1); letter-spacing: .06em; }
+@media (prefers-reduced-transparency: reduce) { .scan-overlay { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(4,2,12,.9); } }

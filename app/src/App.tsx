@@ -91,14 +91,14 @@ export default function App() {
     }
   }, [notify, bump]);
 
-  const [scanStep, setScanStep] = useState<string | null>(null); // non-null while a scan runs; shown in the overlay
+  const [scanStep, setScanStep] = useState<number | null>(null); // index into SCAN_STEPS while a scan runs
   const scanning = scanStep !== null;
   const scan = useCallback(async () => {
     if (scanning) return;
-    setScanStep("Checking your project folders for changes…");
+    setScanStep(0);
     try {
       await api("POST", "/jobs/rescan-folders/run");
-      setScanStep("Searching for new conversations and scoring them…");
+      setScanStep(1);
       const r = await api("POST", "/discovery/run", {});
       const failed = r.queries.filter((q: any) => q.error).length;
       const skipped = r.skippedConnectors.map((c: any) => c.id).join(", ");
@@ -353,7 +353,7 @@ export default function App() {
         <Person id={screen === "network" ? personId : null} names={names} onClose={() => setPersonId(null)} onDraftedFollowup={() => setOppFilter("followups")} />
       </div>
 
-      {scanStep && <ScanOverlay step={scanStep} />}
+      {scanStep !== null && <ScanOverlay step={scanStep} />}
       {palette && <Spotlight onClose={() => setPalette(false)} people={graphData?.nodes ?? []} />}
       {connect && <ConnectSheet name={connect} onClose={() => setConnect(null)} />}
       {menu && (
@@ -383,8 +383,15 @@ export default function App() {
   );
 }
 
+const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches"];
+const ORBITS = [
+  { inset: 6, dur: 7, color: "var(--cyan)" },
+  { inset: 20, dur: 4.5, color: "#c4b5fd" },
+  { inset: 34, dur: 3, color: "#f0abfc" },
+];
+
 /** Covers and dims the app while a scan runs; the backend calls can't be cancelled, so there is no close button. */
-function ScanOverlay({ step }: { step: string }) {
+function ScanOverlay({ step }: { step: number }) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setSeconds((n) => n + 1), 1000);
@@ -393,11 +400,28 @@ function ScanOverlay({ step }: { step: string }) {
   return (
     <div className="scan-overlay" role="alertdialog" aria-modal="true" aria-busy="true" aria-labelledby="scan-title" aria-describedby="scan-step">
       <div className="scan-card glass thick" tabIndex={-1} ref={(el) => el?.focus()}>
-        <div className="spinner" aria-hidden="true" />
-        <h2 id="scan-title">Scanning in progress</h2>
-        <p>Please wait. This usually takes under a minute.</p>
-        <p className="muted" id="scan-step" aria-live="polite">{step}</p>
-        <p className="muted">{seconds}s</p>
+        <div className="radar" aria-hidden="true">
+          <i className="ring" style={{ inset: 0 }} />
+          <i className="ring" style={{ inset: 22 }} />
+          <i className="ring" style={{ inset: 44 }} />
+          <i className="sweep" />
+          {ORBITS.map((o, i) => (
+            <i key={i} className="orbit" style={{ inset: o.inset, animationDuration: `${o.dur}s`, animationDelay: `-${(o.dur * (i + 1)) / 3}s`, ["--c" as string]: o.color }} />
+          ))}
+          <i className="core" />
+        </div>
+        <h2 id="scan-title" className="scan-title">Scanning in progress</h2>
+        <p className="scan-sub">Please wait. Your agent is looking for new conversations.</p>
+        <ol className="scan-steps" id="scan-step" aria-live="polite">
+          {SCAN_STEPS.map((label, i) => (
+            <li key={label} className={i < step ? "done" : i === step ? "active" : "todo"} aria-current={i === step ? "step" : undefined}>
+              <span className="dot" aria-hidden="true">{i < step ? "✓" : ""}</span>
+              {label}
+            </li>
+          ))}
+        </ol>
+        <div className="scan-bar" aria-hidden="true"><i /></div>
+        <span className="scan-time">{String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}</span>
       </div>
     </div>
   );
