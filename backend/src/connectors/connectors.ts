@@ -7,9 +7,13 @@ const UA = "Resona/0.1 (local-first networking assistant)";
 export class GitHubConnector implements DiscoveryConnector {
   readonly id = "github";
   constructor(
-    private readonly token: string | undefined,
+    // Read on every use so a token saved in-app applies without a restart.
+    private readonly getToken: () => string | undefined,
     private readonly fetchFn: FetchLike = fetch as unknown as FetchLike,
   ) {}
+  private get token() {
+    return this.getToken();
+  }
 
   status(): ConnectorStatus {
     return {
@@ -100,9 +104,12 @@ export class HackerNewsConnector implements DiscoveryConnector {
 export class XConnector implements DiscoveryConnector {
   readonly id = "x";
   constructor(
-    private readonly bearer: string | undefined,
+    private readonly getBearer: () => string | undefined,
     private readonly fetchFn: FetchLike = fetch as unknown as FetchLike,
   ) {}
+  private get bearer() {
+    return this.getBearer();
+  }
 
   status(): ConnectorStatus {
     return {

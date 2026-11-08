@@ -2,10 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Services } from "../container.ts";
 import { body, param, query } from "./http.ts";
-import { badRequest, notFound, parseJson } from "../lib/util.ts";
+import { badRequest, HttpError, notFound, parseJson } from "../lib/util.ts";
 import { personToJson } from "../services/people.ts";
 import { contextToJson, projectToJson, ProjectService } from "../services/projects.ts";
 import type { ChunkSource } from "../search/index.ts";
+import { CREDENTIALS, type CredentialName } from "../system/mac.ts";
 
 const profileSchema = z.object({
   platform: z.string().min(1),
@@ -34,12 +35,18 @@ const SETTINGS = {
   "schedule.weeklyReview.enabled": z.boolean(),
   "schedule.vaultSync.enabled": z.boolean(),
   "ai.disabled": z.boolean(),
+  "agent.paused": z.boolean(),
+  "ai.provider": z.enum(["anthropic", "chatgpt"]),
+  "ai.chatgptModel": z.string().max(100),
 } as const;
 const SETTING_DEFAULTS: Record<keyof typeof SETTINGS, unknown> = {
   "schedule.discovery.enabled": false,
   "schedule.weeklyReview.enabled": true,
   "schedule.vaultSync.enabled": true,
   "ai.disabled": false,
+  "agent.paused": false,
+  "ai.provider": "anthropic",
+  "ai.chatgptModel": "",
 };
 
 export function apiRouter(s: Services): Router {
@@ -53,7 +60,7 @@ export function apiRouter(s: Services): Router {
   r.get("/status", (_req, res) => {
     const count = (sql: string) => Number(s.db.get<{ n: number }>(sql)?.n ?? 0);
     res.json({
-      ai: { available: s.ai.isAvailable(), provider: "anthropic", model: s.ai.model },
+      ai: { available: s.ai.isAvailable(), provider: s.ai.provider, model: s.ai.model },
       storage: { dataDir: s.config.dataDir, database: s.config.dbPath, vault: s.config.vaultDir },
       counts: {
         projects: count("SELECT COUNT(*) AS n FROM projects"),
@@ -63,9 +70,108 @@ export function apiRouter(s: Services): Router {
         openQuestions: count("SELECT COUNT(*) AS n FROM clarification_questions WHERE status = 'open'"),
         openFollowups: count("SELECT COUNT(*) AS n FROM followups WHERE state = 'open'"),
       },
+      agent: { state: agentState() },
       scheduler: { resumedAfterPauseAt: s.scheduler.resumedAfterPauseAt, jobs: s.scheduler.status() },
       connectors: s.connectors.list(),
     });
+  });
+
+  const agentState = () => {
+    if (s.db.getSetting<boolean>("agent.paused", false)) return "paused";
+    const resumed = s.scheduler.resumedAfterPauseAt ? Date.parse(s.scheduler.resumedAfterPauseAt) : 0;
+    return s.scheduler.busy || Date.now() - resumed < 2 * 60_000 ? "catching_up" : "running";
+  };
+
+  // ---------- credentials (macOS Keychain; values are never returned) ----------
+  const credentialName = (req: Parameters<typeof param>[0]): CredentialName => {
+    const name = param(req, "name");
+    if (!(name in CREDENTIALS)) throw notFound("credential");
+    return name as CredentialName;
+  };
+  const credentialStatus = (name: CredentialName) => {
+    const value = process.env[CREDENTIALS[name]];
+    return { name, connected: Boolean(value), hint: value ? `…${value.slice(-4)}` : null };
+  };
+
+  r.get("/credentials", (_req, res) => {
+    res.json((Object.keys(CREDENTIALS) as CredentialName[]).map(credentialStatus));
+  });
+
+  r.put("/credentials/:name", async (req, res) => {
+    const name = credentialName(req);
+    const raw = body(z.object({ value: z.string().max(1000) }), req).value;
+    // Forgive common paste mistakes: surrounding quotes, or a whole `export NAME=value` line.
+    const value = raw.trim().replace(/^(export\s+)?[A-Z_]+=/, "").replace(/^["']|["']$/g, "").trim();
+    if (value.length < 8) throw new HttpError(400, "That doesn't look like a complete key. Copy the whole key and paste it again.", "invalid_credential");
+    if (name === "anthropic") {
+      if (value.startsWith("sk-ant-oat"))
+        throw new HttpError(400, "That is a Claude subscription login token (from Claude Code), not an API key. Anthropic doesn't allow other apps to use it. Create an API key on the key page instead.", "invalid_credential");
+      if (value.startsWith("sk-ant-admin"))
+        throw new HttpError(400, "That is an Admin API key, which can't call models. Create a regular API key on the key page.", "invalid_credential");
+      // Cheap authenticated call so a mistyped key is rejected before it is stored.
+      try {
+        await s.ai.verifyKey(value);
+      } catch (err) {
+        const e = err as { status?: number; message?: string; error?: { error?: { type?: string; message?: string } } };
+        const detail = e.error?.error?.message ?? e.message ?? String(err);
+        console.warn(`[resona] Anthropic key check failed: status=${e.status ?? "none"} type=${e.error?.error?.type ?? "unknown"}`); // never log the key
+        const message =
+          e.status === 401
+            ? "Anthropic rejected this key (wrong, incomplete or revoked). Copy the whole key, which starts with sk-ant-api, and try again."
+            : e.status
+              ? `Anthropic refused the key check (${e.status}): ${detail}`
+              : `Couldn't reach Anthropic to check the key: ${detail}. Check your internet connection.`;
+        throw new HttpError(400, message, "invalid_credential");
+      }
+    }
+    try {
+      await s.secrets.set(name, value);
+    } catch (err) {
+      // Only stderr: execFile's message repeats the command line, which contains the key.
+      const stderr = String((err as { stderr?: string }).stderr ?? "").trim();
+      throw new HttpError(500, `The key is valid, but saving it to the macOS Keychain failed${stderr ? `: ${stderr}` : "."}`, "keychain_error");
+    }
+    process.env[CREDENTIALS[name]] = value;
+    if (name === "anthropic") s.ai.resetClient();
+    res.json(credentialStatus(name));
+  });
+
+  r.delete("/credentials/:name", async (req, res) => {
+    const name = credentialName(req);
+    await s.secrets.delete(name);
+    delete process.env[CREDENTIALS[name]];
+    if (name === "anthropic") s.ai.resetClient();
+    res.json(credentialStatus(name));
+  });
+
+  // ---------- Sign in with ChatGPT (ChatGPT plan usage) ----------
+  r.get("/chatgpt", (_req, res) => {
+    res.json(s.chatgpt.status());
+  });
+
+  r.post("/chatgpt/sign-in", async (_req, res) => {
+    res.json({ url: await s.chatgpt.startSignIn() });
+  });
+
+  r.post("/chatgpt/cancel", (_req, res) => {
+    s.chatgpt.cancelSignIn();
+    res.json(s.chatgpt.status());
+  });
+
+  r.post("/chatgpt/sign-out", async (_req, res) => {
+    await s.chatgpt.signOut();
+    if (s.ai.provider === "chatgpt") s.db.setSetting("ai.provider", "anthropic");
+    res.json(s.chatgpt.status());
+  });
+
+  r.get("/chatgpt/models", async (_req, res) => {
+    res.json(await s.chatgpt.models());
+  });
+
+  // ---------- native picker (Finder dialog on this Mac) ----------
+  r.post("/system/choose", async (req, res) => {
+    const { kind, prompt } = body(z.object({ kind: z.enum(["folder", "file"]).default("folder"), prompt: z.string().max(200).default("Choose a folder") }), req);
+    res.json({ path: await s.chooser(kind, prompt) });
   });
 
   r.get("/settings", (_req, res) => {
@@ -473,6 +579,18 @@ export function apiRouter(s: Services): Router {
   r.post("/people/:id/merge", (req, res) => {
     const { mergeId } = body(z.object({ mergeId: z.string().min(1) }), req);
     res.json(personToJson(s.people.merge(param(req, "id"), mergeId)));
+  });
+
+  r.post("/people/:id/drafts", async (req, res) => {
+    const input = body(
+      z.object({
+        useAi: z.boolean().optional(),
+        channel: z.enum(["public_reply", "direct_message", "email", "comment"]).optional(),
+        reason: z.string().max(500).optional(),
+      }),
+      req,
+    );
+    res.status(201).json(await s.drafts.createFollowupDraft(param(req, "id"), input));
   });
 
   r.get("/people/:id/paths", (req, res) => {

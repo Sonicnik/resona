@@ -78,7 +78,8 @@ export async function draftOutreachWithAi(
     channel: string;
     matchReason: string;
     history: string[];
-    opportunityId: string;
+    /** What triggered the draft, kept in processing history, e.g. `opportunity:opp_…`. */
+    sourceRef: string;
   },
 ) {
   const info = scenarioInfo(args.scenario);
@@ -87,7 +88,7 @@ export async function draftOutreachWithAi(
   return ai.structured({
     purpose: "outreach_draft",
     projectIds: [args.ctx.projectId],
-    inputRefs: [`opportunity:${args.opportunityId}`, `project_context:${args.ctx.contextId}`],
+    inputRefs: [args.sourceRef, `project_context:${args.ctx.contextId}`],
     system: `You draft an individual reply or message from a student or early-career person to someone whose post relates to the user's project. The goal is a genuinely useful contribution that can start a professional relationship, not a sales pitch.
 
 ${VOICE_RULES}

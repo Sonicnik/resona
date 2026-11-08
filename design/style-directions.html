@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glass style directions</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: Inter, -apple-system, sans-serif; background: #0b0b0f; color: #eee; padding: 32px 16px 64px; }
+  header.page { max-width: 1180px; margin: 0 auto 28px; }
+  header.page h1 { font: 600 26px "Space Grotesk", sans-serif; }
+  header.page p { color: #9a9aa5; margin-top: 6px; font-size: 14px; }
+
+  .dir { max-width: 1180px; margin: 0 auto 40px; }
+  .dir-label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .dir-label h2 { font: 600 20px "Space Grotesk", sans-serif; }
+  .dir-label span { color: #9a9aa5; font-size: 13px; }
+
+  /* Stage = fake app window */
+  .stage { position: relative; border-radius: 22px; overflow: hidden; min-height: 470px; display: grid; grid-template-columns: 200px minmax(0,1fr) 300px; gap: 14px; padding: 14px; isolation: isolate; }
+  .stage::before, .stage::after { content: ""; position: absolute; border-radius: 50%; z-index: -1; filter: blur(60px); }
+  .glass { backdrop-filter: blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat)); background: var(--g-bg); border: 1px solid var(--g-border); border-radius: var(--r); box-shadow: var(--g-shadow); position: relative; }
+  .glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--g-sheen); }
+
+  nav { padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; }
+  nav .logo { font: 600 15px "Space Grotesk", sans-serif; padding: 4px 10px 14px; color: var(--t1); }
+  nav a { display: flex; justify-content: space-between; padding: 8px 10px; border-radius: 10px; font-size: 13px; color: var(--t2); text-decoration: none; }
+  nav a.on { background: var(--sel); color: var(--t1); }
+  nav a b { font-weight: 500; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
+
+  .card { padding: 20px; display: flex; flex-direction: column; gap: 14px; color: var(--t1); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 13px; background: var(--accent-soft); color: var(--accent-text); flex: none; }
+  .name { font-weight: 600; font-size: 14px; }
+  .meta { font-size: 12px; color: var(--t3); }
+  .score { margin-left: auto; font: 600 13px "Space Grotesk", sans-serif; padding: 4px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
+  .post { font-size: 13px; line-height: 1.55; color: var(--t2); padding: 12px 14px; border-radius: calc(var(--r) - 6px); background: var(--inset); border: 1px solid var(--g-border); }
+  .why { font-size: 12.5px; color: var(--t2); line-height: 1.5; }
+  .why strong { color: var(--t1); font-weight: 500; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 11.5px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--g-border); color: var(--t2); background: var(--inset); }
+  .draft { font-size: 13px; line-height: 1.55; padding: 12px 14px; border-radius: calc(var(--r) - 6px); background: var(--inset-2); border: 1px solid var(--accent-line); color: var(--t1); min-height: 70px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn { font: 500 12.5px Inter, sans-serif; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--g-border); background: var(--inset); color: var(--t1); cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+
+  .graph { padding: 16px; display: flex; flex-direction: column; color: var(--t1); }
+  .graph h3 { font-size: 13px; font-weight: 600; }
+  .graph svg { flex: 1; width: 100%; min-height: 260px; }
+  .legend { display: flex; gap: 12px; font-size: 11px; color: var(--t3); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--edge); vertical-align: middle; margin-right: 4px; }
+
+  /* ---------- A: Aurora ---------- */
+  .aurora { background: #0d0a1f; --blur: 28px; --sat: 160%; --r: 20px;
+    --g-bg: rgba(255,255,255,.07); --g-border: rgba(255,255,255,.16); --g-shadow: 0 10px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.18);
+    --g-sheen: linear-gradient(135deg, rgba(255,255,255,.10), transparent 40%);
+    --t1: #fff; --t2: rgba(255,255,255,.78); --t3: rgba(255,255,255,.55); --sel: rgba(255,255,255,.12);
+    --inset: rgba(255,255,255,.06); --inset-2: rgba(140,110,255,.12); --accent: linear-gradient(135deg,#8b5cf6,#22d3ee); --on-accent: #fff;
+    --accent-soft: rgba(167,139,250,.22); --accent-text: #ddd6fe; --accent-line: rgba(167,139,250,.45); --edge: #a78bfa; }
+  .aurora::before { width: 520px; height: 520px; background: #7c3aed; top: -160px; left: 120px; opacity: .75; }
+  .aurora::after { width: 480px; height: 480px; background: #06b6d4; bottom: -200px; right: 40px; opacity: .6; }
+  .aurora .blob3 { position: absolute; z-index: -1; width: 300px; height: 300px; border-radius: 50%; background: #ec4899; filter: blur(70px); opacity: .45; top: 160px; left: 52%; }
+
+  /* ---------- B: Liquid ---------- */
+  .liquid { background: linear-gradient(160deg,#e9eef6,#f6efe9); --blur: 22px; --sat: 180%; --r: 22px;
+    --g-bg: rgba(255,255,255,.45); --g-border: rgba(255,255,255,.75); --g-shadow: 0 8px 30px rgba(30,40,70,.10), inset 0 1px 1px rgba(255,255,255,.9), inset 0 -1px 1px rgba(0,0,0,.04);
+    --g-sheen: radial-gradient(120% 60% at 20% 0%, rgba(255,255,255,.65), transparent 55%);
+    --t1: #10131a; --t2: #3c4250; --t3: #6b7180; --sel: rgba(255,255,255,.7);
+    --inset: rgba(255,255,255,.55); --inset-2: rgba(255,255,255,.8); --accent: #1f6feb; --on-accent: #fff;
+    --accent-soft: rgba(31,111,235,.12); --accent-text: #1450b8; --accent-line: rgba(31,111,235,.35); --edge: #1f6feb; }
+  .liquid::before { width: 420px; height: 420px; background: #9ec5ff; top: -120px; left: 260px; opacity: .8; }
+  .liquid::after { width: 380px; height: 380px; background: #ffc9a8; bottom: -160px; right: 120px; opacity: .8; }
+
+  /* ---------- C: Obsidian ---------- */
+  .obsidian { background: #070708; --blur: 18px; --sat: 120%; --r: 14px;
+    --g-bg: rgba(22,22,26,.62); --g-border: rgba(255,255,255,.08); --g-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 20px 50px rgba(0,0,0,.5);
+    --g-sheen: linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%);
+    --t1: #f2f2f3; --t2: #b4b4ba; --t3: #77777f; --sel: rgba(255,255,255,.06);
+    --inset: rgba(255,255,255,.03); --inset-2: rgba(212,255,80,.04); --accent: #d4ff50; --on-accent: #0a0a0a;
+    --accent-soft: rgba(212,255,80,.12); --accent-text: #d4ff50; --accent-line: rgba(212,255,80,.30); --edge: #d4ff50; }
+  .obsidian::before { width: 380px; height: 380px; background: #3b4a12; top: -140px; right: 80px; opacity: .55; }
+  .obsidian::after { width: 300px; height: 300px; background: #1d2433; bottom: -120px; left: 80px; opacity: .7; }
+  .obsidian .card .name, .obsidian .score { font-family: "Space Grotesk", sans-serif; }
+
+  @media (max-width: 900px) { .stage { grid-template-columns: minmax(0,1fr); } nav { flex-direction: row; overflow-x: auto; } nav .logo { display: none; } }
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>Glass style directions</h1>
+  <p>The same three things in each: sidebar, one opportunity card, and part of the people network. Choose one, or mix parts.</p>
+</header>
+
+<template id="content">
+  <nav class="glass">
+    <div class="logo">Networking agent</div>
+    <a href="#">Home</a>
+    <a href="#" class="on">Opportunities <b>8</b></a>
+    <a href="#">Posts <b>2</b></a>
+    <a href="#">Network</a>
+    <a href="#">Projects</a>
+    <a href="#">Privacy</a>
+  </nav>
+  <section class="glass card">
+    <div class="row">
+      <div class="avatar">PM</div>
+      <div><div class="name">Priya Menon</div><div class="meta">LinkedIn · ML engineer at Lumen · 2 days ago</div></div>
+      <div class="score">92% match</div>
+    </div>
+    <div class="post">"Does anyone have a good way to deduplicate contacts across Gmail and LinkedIn exports? Every tool I've tried merges people by name and gets it wrong."</div>
+    <div class="why"><strong>Why you:</strong> your CubeSync project merges identities by stable platform ID, and you measured 0 false merges on 4k contacts.</div>
+    <div class="chips"><span class="chip">CubeSync · README.md</span><span class="chip">eval/results.csv</span><span class="chip">Public reply</span></div>
+    <div class="draft">Hit the same issue. I ended up keying on platform IDs instead of names. On 4k contacts it removed every false merge. Happy to share the approach if that helps.</div>
+    <div class="actions"><button class="btn">Dismiss</button><button class="btn">Edit</button><button class="btn primary">Approve reply</button></div>
+  </section>
+  <aside class="glass graph">
+    <h3>Your network</h3>
+    <svg viewBox="0 0 260 260" aria-label="Network sample">
+      <g stroke="var(--edge)" stroke-width="1.6" fill="none">
+        <line x1="130" y1="130" x2="60" y2="70" />
+        <line x1="130" y1="130" x2="210" y2="80" opacity=".9"/>
+        <line x1="130" y1="130" x2="70" y2="200" stroke-dasharray="4 4" opacity=".55"/>
+        <line x1="130" y1="130" x2="200" y2="200" stroke-dasharray="4 4" opacity=".55"/>
+        <line x1="210" y1="80" x2="235" y2="150" opacity=".9"/>
+      </g>
+      <g font-size="10" font-family="Inter" text-anchor="middle" fill="var(--t2)">
+        <circle cx="130" cy="130" r="20" fill="var(--accent-soft)" stroke="var(--edge)" stroke-width="2"/><text x="130" y="134" fill="var(--t1)">You</text>
+        <circle cx="60" cy="70" r="13" fill="var(--inset)" stroke="var(--g-border)"/><text x="60" y="96">Alex</text>
+        <circle cx="210" cy="80" r="15" fill="var(--accent-soft)" stroke="var(--edge)"/><text x="210" y="108">Priya</text>
+        <circle cx="70" cy="200" r="11" fill="var(--inset)" stroke="var(--g-border)" stroke-dasharray="3 3"/><text x="70" y="224">Sam</text>
+        <circle cx="200" cy="200" r="11" fill="var(--inset)" stroke="var(--g-border)" stroke-dasharray="3 3"/><text x="200" y="224">Jordan</text>
+        <circle cx="235" cy="150" r="10" fill="var(--inset)" stroke="var(--g-border)"/><text x="235" y="172">Lee</text>
+      </g>
+    </svg>
+    <div class="legend"><span><i style="border-top-style:dashed"></i>Proposed</span><span><i></i>Interacted</span></div>
+  </aside>
+</template>
+
+<section class="dir">
+  <div class="dir-label"><h2>A. Aurora</h2><span>Dark, bright colour glows behind heavy frosted glass. Most eye-catching for a demo; text can be harder to read.</span></div>
+  <div class="stage aurora"><div class="blob3"></div></div>
+</section>
+<section class="dir">
+  <div class="dir-label"><h2>B. Liquid</h2><span>Light, clear glass with highlighted edges, close to Apple's Liquid Glass. Feels native to the Mac; the calmest of the three.</span></div>
+  <div class="stage liquid"></div>
+</section>
+<section class="dir">
+  <div class="dir-label"><h2>C. Obsidian</h2><span>Near-black smoked glass, one sharp lime accent, crisp thin borders. Fits a lot of information on screen, like Linear or Raycast.</span></div>
+  <div class="stage obsidian"></div>
+</section>
+
+<script>
+  const tpl = document.getElementById('content');
+  document.querySelectorAll('.stage').forEach(s => s.append(tpl.content.cloneNode(true)));
+</script>
+</body>
+</html>

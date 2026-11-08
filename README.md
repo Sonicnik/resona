@@ -2,7 +2,19 @@
 
 A local-first AI networking app for Mac that turns your projects into personalized outreach, social post drafts, and a visual professional network.
 
-**Status:** A first local backend exists in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API); see the [API reference](backend/docs/api-reference.md). The Mac app UI and authorized LinkedIn access are not yet implemented.
+**Status:** First prototype. The local backend in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API; see the [API reference](backend/docs/api-reference.md)) is wired to the glass "star map" UI in [`app/`](app/) (React + Vite, ported from [`design/prototype.html`](design/prototype.html)). It runs in the browser for now; the Tauri window and authorized LinkedIn access are not yet implemented.
+
+## Run the prototype
+
+Needs Node 22.13+. From the repository root:
+
+```bash
+./start.sh
+```
+
+It installs what's missing, starts the backend on demo data, seeds it once, and opens http://localhost:1420. Ctrl+C stops everything. Demo data lives in `~/.resona-demo` (delete it to reset); `./start.sh --real` uses your real data instead, without seeding.
+
+To turn on AI, open **Privacy** and either choose **Continue with ChatGPT** to use your ChatGPT Plus or Pro plan (OpenAI's sign-in, preview), or **Claude → Connect** to paste an Anthropic API key. Tokens and keys are stored in your macOS Keychain, never in this repository. Then allow AI per folder.
 
 ## How it works
 

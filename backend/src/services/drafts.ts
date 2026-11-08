@@ -125,7 +125,7 @@ export class DraftService {
           channel,
           matchReason: opp.matchReason,
           history,
-          opportunityId,
+          sourceRef: `opportunity:${opportunityId}`,
         });
         body = res.data.body;
         sourceRefs = res.data.source_refs;
@@ -156,6 +156,75 @@ export class DraftService {
       meta,
     });
     if (opp.state === "new") this.opportunities.setState(opportunityId, "shortlisted");
+    return this.get(id);
+  }
+
+  /**
+   * Follow-up to someone already in the network (no opportunity): grounded in past interactions,
+   * the open follow-up reason and the latest context of the project most recently linked to them.
+   */
+  async createFollowupDraft(personId: string, opts: { useAi?: boolean; channel?: string; reason?: string } = {}): Promise<DraftView> {
+    const person = this.people.get(personId);
+    if (person.is_self) throw badRequest("cannot draft a follow-up to yourself");
+    const followup = this.db.get<{ reason: string; project_id: string | null }>(
+      "SELECT reason, project_id FROM followups WHERE person_id = ? AND state = 'open' ORDER BY COALESCE(due_at, created_at) LIMIT 1",
+      [personId],
+    );
+    const projectId =
+      followup?.project_id ??
+      this.db.get<{ project_id: string }>(
+        `SELECT project_id FROM (
+           SELECT project_id, created_at FROM opportunities WHERE person_id = ?
+           UNION ALL SELECT project_id, created_at FROM drafts WHERE person_id = ? AND project_id IS NOT NULL
+         ) ORDER BY created_at DESC LIMIT 1`,
+        [personId, personId],
+      )?.project_id ??
+      this.projects.list().find((p) => p.status === "active" && p.kind === "project")?.id;
+    if (!projectId) throw badRequest("add a project folder before drafting a follow-up");
+    const ctxRow = this.projects.latestContext(projectId);
+    if (!ctxRow) throw badRequest("project has no summary yet; summarize it first");
+    const ctx = contextForDraft(this.projects.get(projectId).name, ctxRow);
+    const reason = opts.reason ?? followup?.reason ?? "Follow up on your last conversation";
+    const interactions = this.relationships.interactionsFor(personId, 5) as Array<Record<string, unknown>>;
+    const last = interactions[0];
+    const platform = String(last?.platform ?? this.people.profiles(personId)[0]?.platform ?? "linkedin");
+    const channel = opts.channel ?? "direct_message";
+    const history = interactions.map(
+      (i) => `${String(i.occurred_at).slice(0, 10)} ${i.direction} ${i.type}: ${String(i.body ?? i.subject ?? "").slice(0, 300)}`,
+    );
+
+    let body: string;
+    let sourceRefs: string[];
+    let author: "ai" | "template" = "template";
+    let model: string | null = null;
+    const meta: Record<string, unknown> = { followupReason: reason };
+    const template = () =>
+      templateOutreach({ ctx, authorName: person.display_name, scenario: "past_contact_followup", sharedTerms: parseJson<string[]>(ctxRow.keywords, []), platform });
+    if ((opts.useAi ?? true) && this.ai.canUseFor([projectId])) {
+      try {
+        const res = await draftOutreachWithAi(this.ai, {
+          ctx,
+          post: { text: `${reason}\n\nLast message: ${String(last?.body ?? last?.subject ?? "(none)")}`, platform },
+          authorName: person.display_name,
+          scenario: "past_contact_followup",
+          channel,
+          matchReason: reason,
+          history,
+          sourceRef: `person:${personId}`,
+        });
+        ({ body, source_refs: sourceRefs } = res.data);
+        author = "ai";
+        model = res.model;
+        meta.rationale = res.data.rationale;
+        meta.cautions = res.data.cautions;
+      } catch (err) {
+        meta.aiError = err instanceof Error ? err.message : String(err);
+        ({ body, sourceRefs } = template());
+      }
+    } else {
+      ({ body, sourceRefs } = template());
+    }
+    const id = this.insertDraft({ kind: "outreach", projectId, contextId: ctx.contextId, personId, platform, channel, body, author, model, sourceRefs, meta });
     return this.get(id);
   }
 

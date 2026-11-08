@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import type { z } from "zod";
+import { z } from "zod";
 import type { Db } from "../db/database.ts";
+import type { ChatGptAuth } from "./chatgpt.ts";
 import type { Config } from "../config.ts";
 import { newId, nowIso } from "../lib/util.ts";
 
@@ -41,19 +42,28 @@ export interface ModelCall {
  */
 export class AiService {
   private client: Anthropic | null = null;
+  /** Set by the container; used when the user picks their ChatGPT plan as the provider. */
+  chatgpt: ChatGptAuth | null = null;
 
   constructor(
     protected readonly db: Db,
     protected readonly config: Config,
   ) {}
 
-  /** Credentials resolve from ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile. */
+  /** "anthropic" (API key) or "chatgpt" (the user's ChatGPT plan via Sign in with ChatGPT). */
+  get provider(): "anthropic" | "chatgpt" {
+    return this.db.getSetting<string>("ai.provider", "anthropic") === "chatgpt" ? "chatgpt" : "anthropic";
+  }
+
+  /** Claude credentials resolve from ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile. */
   isAvailable(): boolean {
     if (this.db.getSetting<boolean>("ai.disabled", false)) return false;
+    if (this.provider === "chatgpt") return Boolean(this.chatgpt?.connected);
     return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_PROFILE);
   }
 
   get model(): string {
+    if (this.provider === "chatgpt") return this.db.getSetting<string>("ai.chatgptModel", "") || "ChatGPT plan";
     return this.config.ai.model;
   }
 
@@ -64,6 +74,16 @@ export class AiService {
   private getClient(): Anthropic {
     if (!this.client) this.client = new Anthropic({ maxRetries: 3 });
     return this.client;
+  }
+
+  /** Drops the cached client so a key connected or removed in-app takes effect immediately. */
+  resetClient(): void {
+    this.client = null;
+  }
+
+  /** Throws (with `status` 401 for a bad key) unless the key authenticates. Sends no user material. */
+  async verifyKey(apiKey: string): Promise<void> {
+    await new Anthropic({ apiKey, maxRetries: 1 }).models.list({ limit: 1 });
   }
 
   /** Raises AiBlockedError unless every project allows AI processing. */
@@ -105,7 +125,9 @@ export class AiService {
       throw err;
     }
     if (!this.isAvailable()) {
-      throw new AiUnavailableError("No Claude API credentials configured (set ANTHROPIC_API_KEY).");
+      throw new AiUnavailableError(
+        this.provider === "chatgpt" ? "Not signed in with ChatGPT. Use Continue with ChatGPT in Privacy." : "No Claude API credentials configured. Connect Claude in Privacy.",
+      );
     }
     try {
       const call = await this.callModel(req);
@@ -122,6 +144,7 @@ export class AiService {
 
   /** Performs the provider call. Overridable in tests. */
   protected async callModel<S extends z.ZodType>(req: StructuredRequest<S>): Promise<ModelCall> {
+    if (this.provider === "chatgpt") return this.callChatGpt(req);
     const client = this.getClient();
     try {
       const response = await client.beta.messages.parse({
@@ -163,6 +186,26 @@ export class AiService {
     }
   }
 
+  /**
+   * ChatGPT plan path. Structured outputs aren't documented for this preview flow, so the schema goes in the
+   * instructions and structured() validates the reply with the same Zod schema.
+   */
+  private async callChatGpt<S extends z.ZodType>(req: StructuredRequest<S>): Promise<ModelCall> {
+    if (!this.chatgpt) throw new AiUnavailableError("ChatGPT sign-in is not available.");
+    const schema = JSON.stringify(z.toJSONSchema(req.schema));
+    const instructions = `${req.system}\n\nReply with only one JSON object, no prose and no code fences, that matches this JSON Schema:\n${schema}`;
+    const r = await this.chatgpt.respond(await this.chatgpt.chosenModel(), instructions, req.user);
+    const start = r.text.indexOf("{");
+    const end = r.text.lastIndexOf("}");
+    let output: unknown;
+    try {
+      output = JSON.parse(r.text.slice(start, end + 1));
+    } catch {
+      throw new Error("ChatGPT did not return valid JSON. Try again.");
+    }
+    return { output, model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens };
+  }
+
   private record(entry: {
     purpose: string;
     projectId: string | null;
@@ -176,12 +219,13 @@ export class AiService {
   }): void {
     this.db.run(
       `INSERT INTO ai_requests (id, purpose, project_id, provider, model, input_refs, input_chars, input_tokens, output_tokens, status, error, created_at)
-       VALUES (?, ?, ?, 'anthropic', ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         newId("air"),
         entry.purpose,
         entry.projectId,
-        entry.model ?? this.config.ai.model,
+        this.provider === "chatgpt" ? "openai-chatgpt-plan" : "anthropic",
+        entry.model ?? this.model,
         entry.inputRefs,
         entry.inputChars,
         entry.inputTokens ?? null,
