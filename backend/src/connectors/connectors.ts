@@ -1,3 +1,4 @@
+import { decodeEntities } from "../matching/situation.ts";
 import type { SourcePostInput } from "../services/opportunities.ts";
 import { ConnectorUnavailableError, type ConnectorStatus, type DiscoveryConnector, type FetchLike } from "./types.ts";
 
@@ -82,12 +83,13 @@ export class HackerNewsConnector implements DiscoveryConnector {
     return (body.hits ?? [])
       .map((h) => {
         const raw = h.comment_text ?? h.story_text ?? "";
-        const text = raw.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+        const text = decodeEntities(raw.replace(/<p>/gi, "\n\n").replace(/<[^>]+>/g, " ")).replace(/[ \t]+/g, " ").trim();
         return {
           platform: "hackernews",
           externalId: h.objectID,
           url: `https://news.ycombinator.com/item?id=${h.objectID}`,
-          title: h.title ?? h.story_title ?? null,
+          // A comment links to itself; its title names the thread it replies to.
+          title: h.comment_text ? (h.story_title ? `Re: ${h.story_title}` : null) : (h.title ?? null),
           text: [h.title, text].filter(Boolean).join("\n\n"),
           publishedAt: h.created_at,
           connector: this.id,

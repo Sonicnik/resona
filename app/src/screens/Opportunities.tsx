@@ -34,12 +34,22 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
         </div>
         <span className="score">{Math.round(opp.relevance * 100)}%</span>
       </div>
-      <div className="post">“{opp.post?.text}”</div>
-      <div className="why">
-        <strong>Why you:</strong> {opp.matchReason}
+      <div className="post">
+        {opp.situation?.headline && <div className="sit-head">{opp.situation.headline}</div>}
+        <div title={opp.situation?.source === "ai" ? "Summarized by AI" : "Key sentence from the post"}>{opp.situation?.gist ?? opp.post?.text}</div>
+      </div>
+      <div className="sit-links">
+        {opp.post?.url && <a href={opp.post.url} target="_blank" rel="noreferrer">Open on {platformName(opp.post.platform) || "the web"} ↗</a>}
+        <details>
+          <summary>Full text</summary>
+          <div className="full-text">{opp.post?.text}</div>
+        </details>
+      </div>
+      <div className="why" title={opp.matchReason}>
+        <strong>Why you:</strong> {opp.why ?? opp.matchReason}
       </div>
       <div className="chips">
-        {(opp.evidence ?? []).slice(0, 3).map((e: any) => (
+        {(opp.evidence ?? []).slice(0, 2).map((e: any) => (
           <span className="chip" key={e.ref} title={e.excerpt}>{e.ref}</span>
         ))}
         <span className="chip">{CHANNEL[opp.suggestedChannel] ?? opp.suggestedChannel}</span>

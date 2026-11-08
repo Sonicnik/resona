@@ -360,4 +360,6 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (from_entity_type, from_entity_id, target)
   );
   `,
+  // An AI-written one-sentence summary of the post, set by the optional fit check.
+  `ALTER TABLE opportunities ADD COLUMN situation TEXT;`,
 ];

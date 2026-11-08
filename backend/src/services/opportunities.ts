@@ -7,6 +7,8 @@ import type { PeopleService, ProfileInput } from "./people.ts";
 import { badRequest, conflict, newId, notFound, nowIso, parseJson } from "../lib/util.ts";
 import { isWorthSurfacing, scoreMatch, type ProjectProfile } from "../matching/matcher.ts";
 import { centroid } from "../search/embeddings.ts";
+import { summarizeSituation } from "../matching/situation.ts";
+import { scenarioInfo, type Scenario } from "../matching/scenarios.ts";
 
 export interface SourcePostInput {
   platform: string;
@@ -32,6 +34,7 @@ const AssessmentSchema = z.object({
   fits: z.boolean().describe("True only if the project genuinely meets what the author needs and a reply would add value."),
   scenario: z.string(),
   reason: z.string().describe("One or two sentences, specific to the post and the project."),
+  situation: z.string().describe("One plain sentence, at most 25 words: what the author is asking for or doing. No praise, no mention of the user's project."),
   suggested_channel: z.enum(["public_reply", "direct_message", "email", "comment"]),
   suggested_action: z.enum(["public_reply", "personal_message", "question", "demo", "collaboration_proposal"]),
   relevance: z.number().describe("0 to 1."),
@@ -254,9 +257,9 @@ Heuristic pre-assessment: scenario=${opp.scenario}, flags=${opp.flags.join("; ")
     });
     const relevance = data.fits ? Math.max(0, Math.min(1, data.relevance)) : Math.min(opp.relevance, 0.1);
     this.db.run(
-      `UPDATE opportunities SET match_reason = ?, suggested_channel = ?, suggested_action = ?, relevance = ?, flags = ?,
+      `UPDATE opportunities SET match_reason = ?, situation = ?, suggested_channel = ?, suggested_action = ?, relevance = ?, flags = ?,
          state = CASE WHEN ? = 0 AND state = 'new' THEN 'dismissed' ELSE state END, updated_at = ? WHERE id = ?`,
-      [data.reason, data.suggested_channel, data.suggested_action, relevance, [...opp.flags, ...data.cautions], data.fits ? 1 : 0, nowIso(), id],
+      [data.reason, data.situation, data.suggested_channel, data.suggested_action, relevance, [...opp.flags, ...data.cautions], data.fits ? 1 : 0, nowIso(), id],
     );
     return { ...data, relevance };
   }
@@ -270,6 +273,11 @@ const OPPORTUNITY_SELECT = `SELECT o.*, sp.url AS post_url, sp.title AS post_tit
   LEFT JOIN people p ON p.id = o.person_id`;
 
 export function opportunityToJson(row: Record<string, unknown>) {
+  const scoreBreakdown = parseJson<Record<string, unknown>>(row.score_breakdown, {});
+  const extracted = summarizeSituation(
+    { text: String(row.post_text ?? ""), title: row.post_title as string | null, platform: String(row.post_platform), url: row.post_url as string | null },
+    (scoreBreakdown.sharedTerms as string[] | undefined) ?? [],
+  );
   return {
     id: String(row.id),
     state: String(row.state),
@@ -280,7 +288,12 @@ export function opportunityToJson(row: Record<string, unknown>) {
     suggestedAction: String(row.suggested_action),
     flags: parseJson<string[]>(row.flags, []),
     evidence: parseJson<Array<{ ref: string; excerpt: string }>>(row.evidence, []),
-    scoreBreakdown: parseJson<Record<string, unknown>>(row.score_breakdown, {}),
+    scoreBreakdown,
+    /** Short summary for the card; the AI fit check replaces the extracted gist with its own sentence. */
+    situation: row.situation ? { headline: extracted.headline, gist: String(row.situation), source: "ai" as const } : { ...extracted, source: "extracted" as const },
+    /** One line for the card: the AI fit check's own reason, or scenario · project · shared terms. */
+    why: row.situation ? String(row.match_reason) : whyLine(String(row.scenario), row.person_name as string | null, row.project_name as string | undefined, (scoreBreakdown.sharedTerms as string[] | undefined) ?? []),
+    suggestion: scenarioInfo(String(row.scenario) as Scenario).contribution,
     projectId: String(row.project_id),
     projectName: row.project_name as string | undefined,
     projectContextId: row.project_context_id as string | null,
@@ -297,4 +310,9 @@ export function opportunityToJson(row: Record<string, unknown>) {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function whyLine(scenario: string, person: string | null, project: string | undefined, shared: string[]): string {
+  const label = scenarioInfo(scenario as Scenario).label; // written for one person: "asks for recommendations"
+  return `${person?.split(/\s+/)[0] || "The author"} ${label}${project ? ` · fits ${project}` : ""}${shared.length ? ` · shared: ${shared.slice(0, 3).join(", ")}` : ""}`;
 }
