@@ -373,7 +373,7 @@ export function apiRouter(s: Services): Router {
     res.json(s.connectors.list());
   });
 
-  r.post("/source-posts", (req, res) => {
+  r.post("/source-posts", async (req, res) => {
     const input = body(
       z.object({
         platform: z.string().min(1),
@@ -395,7 +395,9 @@ export function apiRouter(s: Services): Router {
       author: input.author ? { ...input.author, platform: input.author.platform ?? input.platform } : undefined,
     });
     const opportunities = input.match === false ? [] : s.opportunities.matchPost(res1.postId);
-    res.status(res1.created ? 201 : 200).json({ ...res1, opportunities });
+    // A post added by hand gets the same built-in AI check as scanned ones.
+    const aiRanking = opportunities.length ? await s.opportunities.rankWithAi({ onlyIds: opportunities.map((o) => o.opportunityId) }) : null;
+    res.status(res1.created ? 201 : 200).json({ ...res1, opportunities, aiRanking });
   });
 
   r.get("/source-posts", (req, res) => {
@@ -414,6 +416,7 @@ export function apiRouter(s: Services): Router {
         queriesPerProject: z.number().int().min(1).max(10).optional(),
         limitPerQuery: z.number().int().min(1).max(50).optional(),
         sinceDays: z.number().int().min(1).max(365).optional(),
+        rank: z.boolean().optional(),
       }),
       req,
     );
@@ -450,6 +453,12 @@ export function apiRouter(s: Services): Router {
     const { state } = body(z.object({ state: z.enum(["new", "shortlisted", "dismissed", "acted_on"]) }), req);
     s.opportunities.setState(param(req, "id"), state);
     res.json(s.opportunities.get(param(req, "id")));
+  });
+
+  // Built-in AI fit check: checks the best unchecked matches and refreshes the top 20 picks.
+  r.post("/opportunities/rank", async (req, res) => {
+    const input = body(z.object({ top: z.number().int().min(1).max(100).optional(), pool: z.number().int().min(1).max(200).optional(), onlyIds: z.array(z.string()).optional() }), req);
+    res.json(await s.opportunities.rankWithAi(input));
   });
 
   r.post("/opportunities/:id/assess", async (req, res) => {

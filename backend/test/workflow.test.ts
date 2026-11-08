@@ -198,3 +198,52 @@ test("approval state machine: exact revision, edits void approvals, uncertain se
   assert.ok(opp2.relevance < s.opportunities.get(m!.opportunityId).relevance);
   s.close();
 });
+
+test("built-in AI check: best matches are checked, top picks lead the feed, poor fits sink without being dismissed", async () => {
+  // The stub "AI" scores posts by a number in their text and rejects posts that say "unrelated".
+  const s = makeServices({
+    ai: (db, config) =>
+      new StubAi(db, config, (req) => {
+        if (req.system.includes("describe their own project")) return AI_SUMMARY;
+        const score = Number(/score=(\d+)/.exec(req.user)?.[1] ?? 50) / 100;
+        const fits = !/unrelated/.test(req.user);
+        return { fits, scenario: "x", reason: fits ? "Real need." : "Not a match.", situation: "They need a tool.", suggested_channel: "public_reply", suggested_action: "public_reply", relevance: score, cautions: [] };
+      }),
+  });
+  const { project } = setupProject(s, "allowed");
+  await s.pipeline.processProject(project.id, "initial");
+  const add = (n: number, extra = "") =>
+    s.opportunities.matchPost(
+      s.opportunities.ingestPost({ platform: "x", externalId: `p${n}`, connector: "manual", text: `${MATCHING_POST} score=${n} ${extra}`, author: { platform: "x", externalId: `a${n}`, displayName: `A${n}` } }).postId,
+    )[0]!.opportunityId;
+  const ids = [add(30), add(90), add(60), add(80, "unrelated")];
+
+  const report = await s.opportunities.rankWithAi({ top: 2, pool: 10 });
+  assert.equal(report.checked, 4);
+  assert.equal(report.fits, 3);
+  assert.equal(report.topPicks, 2);
+  const feed = s.opportunities.list({ limit: 10 });
+  assert.deepEqual(feed.slice(0, 2).map((o) => o.topPick), [1, 2], "top picks first, in order");
+  assert.deepEqual(feed.slice(0, 2).map((o) => o.id), [ids[1], ids[2]], "ordered by the AI's score (90, then 60)");
+  const poor = s.opportunities.get(ids[3]!);
+  assert.equal(poor.state, "new", "a poor fit is not dismissed");
+  assert.ok(poor.flags.some((f) => /not a strong fit/.test(f)));
+  assert.equal(feed.at(-1)!.id, ids[3], "and sinks to the bottom");
+
+  // A re-scan with the same project summary keeps the AI's score; nothing is re-checked.
+  s.opportunities.rematchAll();
+  assert.equal(s.opportunities.get(ids[1]!).relevance, 0.9);
+  assert.equal((await s.opportunities.rankWithAi({ top: 2 })).checked, 0);
+
+  // Dismissing a top pick lets the next confirmed fit move up.
+  s.opportunities.setState(ids[1]!, "dismissed");
+  assert.deepEqual(s.opportunities.list({ limit: 2 }).map((o) => o.id), [ids[2], ids[0]]);
+
+  // Folders without AI permission are left to the keyword ranking.
+  s.projects.update(project.id, { aiPermission: "denied" });
+  add(70);
+  const denied = await s.opportunities.rankWithAi();
+  assert.equal(denied.checked, 0);
+  assert.equal(denied.skippedNoPermission, 1);
+  s.close();
+});

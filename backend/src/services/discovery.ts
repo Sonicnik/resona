@@ -12,6 +12,7 @@ export interface DiscoveryReport {
   newPosts: number;
   opportunities: number;
   skippedConnectors: Array<{ id: string; reason: string }>;
+  aiRanking?: Awaited<ReturnType<OpportunityService["rankWithAi"]>>;
 }
 
 /** Builds search queries from a project context: explicit phrases first, then keyword pairs. */
@@ -35,7 +36,7 @@ export class DiscoveryService {
     private readonly opportunities: OpportunityService,
   ) {}
 
-  async run(opts: { projectIds?: string[]; connectorIds?: string[]; queriesPerProject?: number; limitPerQuery?: number; sinceDays?: number } = {}): Promise<DiscoveryReport> {
+  async run(opts: { projectIds?: string[]; connectorIds?: string[]; queriesPerProject?: number; limitPerQuery?: number; sinceDays?: number; rank?: boolean } = {}): Promise<DiscoveryReport> {
     const report: DiscoveryReport = {
       startedAt: nowIso(),
       finishedAt: "",
@@ -81,6 +82,9 @@ export class DiscoveryService {
       }
     }
     for (const postId of touched) report.opportunities += this.opportunities.matchPost(postId).length;
+    // Built-in AI fit check: the best matches are checked and the top 20 confirmed fits lead the feed.
+    // The app runs this as its own step (rank: false here, then POST /opportunities/rank) to show progress.
+    if (opts.rank !== false) report.aiRanking = await this.opportunities.rankWithAi();
     report.finishedAt = nowIso();
     this.db.setSetting("discovery.lastReport", report);
     return report;

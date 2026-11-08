@@ -83,6 +83,11 @@
 | Spotlight | People + screens + `/search` content hits. |
 | Network view | Top bar filters by **group**: All, **Close** (tie strength ≥ 0.45, the only closeness group), then **industries** (Robotics, Finance, AI & ML, …; the 3 largest as buttons, the rest in a **More** menu outside the scrolling bar; "Other" = no clear industry). Industry is inferred in `backend/src/network/industries.ts` from title, organization, headline, bio, interests and posts; a person's panel has a **Group** picker that overrides it (`people.industry`, null = automatic). An emptied group falls back to All. Inside a group, people outside it are faint and **can't be hovered, clicked or right-clicked** (their objects are skipped by the mouse ray). Names show only near the cursor (70px) or when clicked, including "You". Camera never rotates on its own moves: clicking a person zooms straight in along the current angle; groups and **Reset view** (or R) zoom/pan only (`moveCamera` glides position and look-at together). Framing fits the area not covered by the sidebar, toolbar and bottom bars. The slow orbit pauses while a person is selected. Colours: **green = connected** (a relationship with you), **blue = interacted** (talked with you, no relationship), **gray = proposed**; only ties with *you* count. Hovering a legend item keeps that status lit and fades everyone else (you stay lit). Layout: connected people sit closer the stronger the tie; unconnected people cluster per project (`__anchor`). |
 
+## Built-in features added 2026-11-08
+
+- **Weekly review:** made in the background by the `weekly-review` job (every 7 days; waits until a project exists; writes `Reviews/` vault note right away). Home's **Weekly Review** button only opens the in-app viewer (`app/src/screens/Review.tsx`) with earlier weeks in a menu. The seed no longer creates a review.
+- **AI fit check is built in:** no button. After every scan (and after Add Post) `rankWithAi` checks up to 40 of the best unchecked matches and makes the top 20 confirmed fits the feed's top picks (`#1 · 93%` badge). Poor fits sink with a flag, never auto-dismissed. Skips folders without AI permission; without AI the feed stays keyword-ranked.
+
 ## What exists (map)
 
 **Backend (`backend/src/`)**

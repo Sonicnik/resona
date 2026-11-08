@@ -207,7 +207,6 @@ async function main() {
     .join("\n")}\n`;
   await api("POST", "/imports/linkedin-archive", { files: { "Connections.csv": csv } });
 
-  await api("POST", "/reviews");
   console.log(`Seeded ${Object.keys(projects).length} projects, ${posts.length} posts → ${opps} opportunities, ${5 + extra.length + posts.length} people.`);
 }
 

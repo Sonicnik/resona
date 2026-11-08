@@ -20,11 +20,6 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
   const restore = () => act(() => api("PATCH", `/opportunities/${opp.id}`, { state: "new" }), "Opportunity restored.");
   const dismiss = () => act(() => api("PATCH", `/opportunities/${opp.id}`, { state: "dismissed" }), () => notify("Opportunity dismissed.", restore));
   const write = () => act(() => api("POST", `/opportunities/${opp.id}/drafts`, {}), (d: any) => (d.meta?.aiError ? `Template draft (AI unavailable: ${d.meta.aiError})` : "Draft ready. Edit it, then approve."));
-  const assess = () =>
-    act(
-      () => api("POST", `/opportunities/${opp.id}/assess`),
-      (r: any) => (r.fits ? `Claude confirmed the fit: ${r.reason}` : `Claude thinks the project doesn't fit, so it was dismissed: ${r.reason}`),
-    );
 
   const dismissBtn = <button className="btn ghost" onClick={dismiss}>Dismiss</button>;
   const left = (
@@ -43,7 +38,12 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
             {platformName(opp.post?.platform)} · {opp.projectName} · {ago(opp.post?.publishedAt)}
           </div>
         </div>
-        <span className="score">{Math.round(opp.relevance * 100)}%</span>
+        <span
+          className={`score ${opp.topPick ? "top" : ""}`}
+          title={opp.topPick ? `Top pick #${opp.topPick}: checked by AI after the last scan` : opp.aiCheck ? "Checked by AI" : "Keyword and topic match; not checked by AI yet"}
+        >
+          {opp.topPick ? `#${opp.topPick} · ` : ""}{Math.round(opp.relevance * 100)}%
+        </span>
       </div>
       <div className="post">
         {opp.situation?.headline && <div className="sit-head">{opp.situation.headline}</div>}
@@ -74,7 +74,6 @@ function OppCard({ opp, draft }: { opp: any; draft?: any }) {
           <div className="acts">{left}</div>
           <div className="acts main">
             {dismissBtn}
-            <button className="btn" onClick={assess}>Check Fit with AI</button>
             <button className="btn primary" onClick={write}>Draft Reply</button>
           </div>
         </div>
@@ -133,7 +132,11 @@ function AddPost({ onClose }: { onClose: () => void }) {
           author: f.name ? { displayName: f.name, url: f.profile || undefined } : undefined,
           match: true,
         }),
-      (r: any) => (r.opportunities.length ? `Saved. ${r.opportunities.length} matching opportunit${r.opportunities.length === 1 ? "y" : "ies"} found.` : "Saved, but none of your projects is a strong match."),
+      (r: any) =>
+        !r.opportunities.length
+          ? "Saved, but none of your projects is a strong match."
+          : `Saved. ${r.opportunities.length} matching opportunit${r.opportunities.length === 1 ? "y" : "ies"} found` +
+            (r.aiRanking?.checked ? `; AI checked ${r.aiRanking.checked === 1 ? "it" : "them"}: ${r.aiRanking.fits} good fit${r.aiRanking.fits === 1 ? "" : "s"}.` : "."),
     );
     if (r) onClose();
   };
@@ -160,7 +163,7 @@ function AddPost({ onClose }: { onClose: () => void }) {
 }
 
 export function Opportunities({ filter }: { filter: string }) {
-  const { scan, scanning } = useCtx();
+  const { scan, scanning, status } = useCtx();
   const [adding, setAdding] = useState(false);
   const opps = useApi<any[]>("/opportunities?limit=100");
   const drafts = useApi<any[]>("/drafts?kind=outreach");
@@ -192,7 +195,12 @@ export function Opportunities({ filter }: { filter: string }) {
       <div className="toolbar-row">
         <button className="btn" onClick={() => setAdding(!adding)}>Add Post</button>
         <button className="btn primary" disabled={scanning} onClick={() => void scan()}>{scanning ? "Scanning…" : "Scan for Opportunities"}</button>
-        <span className="muted">LinkedIn search isn't authorized yet; paste LinkedIn posts with Add Post.</span>
+        <span className="muted">
+          {status?.ai?.available
+            ? "After each scan, AI checks the best matches; the top 20 fits lead the list."
+            : "Connect Claude or ChatGPT in Privacy to have AI pick your top 20 after each scan."}{" "}
+          LinkedIn search isn't authorized yet; paste LinkedIn posts with Add Post.
+        </span>
       </div>
       {adding && <AddPost onClose={() => setAdding(false)} />}
       {opps.error && <div className="err">{opps.error}</div>}

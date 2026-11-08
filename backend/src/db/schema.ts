@@ -364,4 +364,9 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE opportunities ADD COLUMN situation TEXT;`,
   // Industry chosen by the user for a person (network groups). NULL means "infer it".
   `ALTER TABLE people ADD COLUMN industry TEXT;`,
+  // Built-in AI fit check: when it ran, its verdict (1 fits, 0 doesn't), and the opportunity's place among
+  // the top picks (1 = first; 0 = not a top pick). Top picks lead the feed.
+  `ALTER TABLE opportunities ADD COLUMN ai_checked_at TEXT;
+   ALTER TABLE opportunities ADD COLUMN ai_fit INTEGER;
+   ALTER TABLE opportunities ADD COLUMN top_pick INTEGER NOT NULL DEFAULT 0;`,
 ];

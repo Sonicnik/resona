@@ -163,7 +163,18 @@ export function createServices(config: Config, opts: { db?: Db; ai?: AiService; 
     run: () => discovery.run(),
   });
   scheduler.register({ name: "suggest-followups", intervalMs: 6 * HOUR, run: () => review.suggestFollowups() });
-  scheduler.register({ name: "weekly-review", intervalMs: 7 * DAY, enabled: setting("schedule.weeklyReview.enabled", true), run: () => review.generate() });
+  scheduler.register({
+    // Runs in the background once a week. It waits until there is at least one project, so a fresh install
+    // doesn't record an empty first review; the review's vault note is written right away.
+    name: "weekly-review",
+    intervalMs: 7 * DAY,
+    enabled: () => setting("schedule.weeklyReview.enabled", true)() && projects.list().length > 0,
+    run: () => {
+      const r = review.generate();
+      if (db.getSetting<boolean>("schedule.vaultSync.enabled", true)) vault.sync();
+      return r.id;
+    },
+  });
   scheduler.register({ name: "vault-sync", intervalMs: 10 * MINUTE, enabled: setting("schedule.vaultSync.enabled", true), run: () => vault.sync() });
 
   if (config.watchEnabled) for (const p of activeProjects()) watcher.watch(p.id, p.folder_path);

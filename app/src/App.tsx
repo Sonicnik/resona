@@ -7,6 +7,7 @@ import { Opportunities } from "./screens/Opportunities";
 import { Posts } from "./screens/Posts";
 import { addProjectFolder, Projects } from "./screens/Projects";
 import { ConnectSheet, Privacy } from "./screens/Privacy";
+import { WeeklyReview } from "./screens/Review";
 
 const SCREENS: Array<[Screen, string]> = [["home", "Home"], ["opps", "Opportunities"], ["posts", "Posts"], ["network", "Network"], ["projects", "Projects"], ["privacy", "Privacy"]];
 const STATUS_TEXT: Record<string, string> = { running: "Agent running", paused: "Agent paused", catching: "Catching up", offline: "Backend offline" };
@@ -49,6 +50,7 @@ export default function App() {
   const [platform, setPlatform] = useState<"linkedin" | "x">("linkedin");
   const [postProject, setPostProject] = useState<string | null>(null);
   const [connect, setConnect] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [menu, setMenu] = useState<{ items: MenuItem[]; x: number; y: number; anchor?: string } | null>(null);
   const [toast, setToast] = useState<{ text: string; undo?: () => void; label?: string; n: number } | null>(null);
   const [palette, setPalette] = useState(false);
@@ -120,13 +122,21 @@ export default function App() {
     try {
       await api("POST", "/jobs/rescan-folders/run");
       setScanStep(1);
-      const r = await api("POST", "/discovery/run", {});
+      const r = await api("POST", "/discovery/run", { rank: false });
+      setScanStep(2);
+      // Built-in AI fit check: the best matches are checked; the top 20 fits lead the Opportunities list.
+      const ai = await api("POST", "/opportunities/rank", {});
       const failed = r.queries.filter((q: any) => q.error).length;
       const skipped = r.skippedConnectors.map((c: any) => c.id).join(", ");
       notify(
         `Scan done: ${r.queries.length} searches, ${r.newPosts} new posts, ${r.opportunities} new opportunities.` +
           (failed ? ` ${failed} searches failed (offline or rate-limited).` : "") +
-          (skipped ? ` Not searched: ${skipped}.` : ""),
+          (skipped ? ` Not searched: ${skipped}.` : "") +
+          (!ai.aiAvailable
+            ? " AI isn't connected, so matches are ranked by keywords only."
+            : ` AI checked ${ai.checked} match${ai.checked === 1 ? "" : "es"}: ${ai.topPicks} top pick${ai.topPicks === 1 ? "" : "s"}.` +
+              (ai.skippedNoPermission ? ` ${ai.skippedNoPermission} skipped (AI is off for their folder).` : "") +
+              (ai.failed ? ` ${ai.failed} couldn't be checked${ai.errors?.[0] ? ` (${ai.errors[0]})` : ""}.` : "")),
       );
     } catch (e) {
       notify(`Scan failed: ${(e as Error).message}`);
@@ -242,6 +252,7 @@ export default function App() {
         if (menu) setMenu(null);
         else if (palette) setPalette(false);
         else if (connect) setConnect(null);
+        else if (reviewOpen) setReviewOpen(false);
         else if (freeFlight) setFreeFlight(false);
         else setPersonId(null);
         return;
@@ -407,7 +418,7 @@ export default function App() {
 
           <main>
             {status?.offline && screen !== "network" && <div className="empty" style={{ margin: 20 }}>The backend isn't reachable. Start it with <code>npm run demo</code> in <code>backend/</code>.</div>}
-            <section className={`screen ${screen === "home" ? "on" : ""}`}>{screen === "home" && <Home onDraftPost={(id) => (setPostProject(id), go("posts"))} />}</section>
+            <section className={`screen ${screen === "home" ? "on" : ""}`}>{screen === "home" && <Home onDraftPost={(id) => (setPostProject(id), go("posts"))} onOpenReview={() => setReviewOpen(true)} />}</section>
             <section className={`screen ${screen === "opps" ? "on" : ""}`}>{screen === "opps" && <Opportunities filter={oppFilter} />}</section>
             <section className={`screen ${screen === "posts" ? "on" : ""}`}>{screen === "posts" && <Posts platform={platform} projectHint={postProject} />}</section>
             <section className={`screen network-screen ${screen === "network" ? "on" : ""}`}>
@@ -444,6 +455,7 @@ export default function App() {
       {scanStep !== null && <ScanOverlay step={scanStep} />}
       {palette && <Spotlight onClose={() => setPalette(false)} people={graphData?.nodes ?? []} />}
       {connect && <ConnectSheet name={connect} onClose={() => setConnect(null)} />}
+      {reviewOpen && <WeeklyReview onClose={() => setReviewOpen(false)} />}
       {menu && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 39 }} onPointerDown={() => setMenu(null)} />
@@ -481,7 +493,7 @@ const LEGEND: Array<[NodeStatus, string, string]> = [
 /** All, Close and the three largest industries get buttons; smaller groups go in the "More" menu. */
 const SHOWN_GROUPS = 5;
 
-const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches"];
+const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches", "Checking the best matches with AI"];
 const ORBITS = [
   { inset: 6, dur: 7, color: "var(--cyan)" },
   { inset: 20, dur: 4.5, color: "#8f8f8f" },

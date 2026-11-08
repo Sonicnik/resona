@@ -30,6 +30,9 @@ const OPPORTUNITY_TRANSITIONS: Record<string, string[]> = {
   acted_on: [],
 };
 
+/** Flag added when the built-in AI check finds the project doesn't really fit the post. */
+export const NOT_A_FIT = "AI check: not a strong fit for this post";
+
 const AssessmentSchema = z.object({
   fits: z.boolean().describe("True only if the project genuinely meets what the author needs and a reply would add value."),
   scenario: z.string(),
@@ -149,8 +152,8 @@ export class OpportunityService {
         profile,
         history,
       );
-      const existing = this.db.get<{ id: string; state: string }>(
-        "SELECT id, state FROM opportunities WHERE source_post_id = ? AND project_id = ?",
+      const existing = this.db.get<{ id: string; state: string; ai_checked_at: string | null; project_context_id: string | null }>(
+        "SELECT id, state, ai_checked_at, project_context_id FROM opportunities WHERE source_post_id = ? AND project_id = ?",
         [postId, profile.projectId],
       );
       if (!isWorthSurfacing(m, opts.threshold)) {
@@ -168,8 +171,18 @@ export class OpportunityService {
         { ...m.breakdown, sharedTerms: m.sharedTerms, matchedPhrases: m.matchedPhrases, limitationConflicts: m.limitationConflicts },
         m.suggestedChannel, m.suggestedAction, m.flags, now,
       ];
+      if (existing?.ai_checked_at && existing.project_context_id === profile.contextId) {
+        // Already checked by AI against this same project summary: keep the AI's score and wording.
+        out.push({ opportunityId: existing.id, projectId: profile.projectId, relevance: m.relevance });
+        continue;
+      }
       if (existing) {
-        // Re-scoring never resurrects dismissed or acted-on opportunities.
+        // Re-scoring never resurrects dismissed or acted-on opportunities. A changed project summary clears
+        // the AI verdict, so the opportunity is checked again on the next ranking.
+        this.db.run(
+          "UPDATE opportunities SET ai_checked_at = NULL, ai_fit = NULL, top_pick = 0, situation = NULL WHERE id = ?",
+          [existing.id],
+        );
         this.db.run(
           `UPDATE opportunities SET person_id = ?, project_context_id = ?, scenario = ?, match_reason = ?, evidence = ?, relevance = ?,
              score_breakdown = ?, suggested_channel = ?, suggested_action = ?, flags = ?, updated_at = ? WHERE id = ?`,
@@ -203,7 +216,7 @@ export class OpportunityService {
     const rows = this.db.all<Record<string, unknown>>(
       `${OPPORTUNITY_SELECT}
        WHERE (? IS NULL OR o.state = ?) AND (? IS NULL OR o.project_id = ?) AND (? IS NULL OR o.person_id = ?) AND o.relevance >= ?
-       ORDER BY o.relevance DESC LIMIT ?`,
+       ORDER BY (o.top_pick > 0) DESC, o.top_pick ASC, o.relevance DESC LIMIT ?`,
       [
         opts.state ?? null, opts.state ?? null, opts.projectId ?? null, opts.projectId ?? null, opts.personId ?? null,
         opts.personId ?? null, opts.minRelevance ?? 0, opts.limit ?? 50,
@@ -226,6 +239,8 @@ export class OpportunityService {
       throw conflict(`cannot move an opportunity from ${row.state} to ${state}`);
     }
     this.db.run("UPDATE opportunities SET state = ?, updated_at = ? WHERE id = ?", [state, nowIso(), id]);
+    // Dismissing (or acting on) a top pick lets the next confirmed fit move up; restoring one can bring it back.
+    this.refreshTopPicks();
   }
 
   /** Optional model check of a single opportunity: does the project genuinely fit the request? */
@@ -255,13 +270,68 @@ Heuristic pre-assessment: scenario=${opp.scenario}, flags=${opp.flags.join("; ")
       schema: AssessmentSchema,
       maxTokens: 4000,
     });
+    // A poor fit sinks to the bottom of the feed with a note; it is never dismissed behind the user's back.
     const relevance = data.fits ? Math.max(0, Math.min(1, data.relevance)) : Math.min(opp.relevance, 0.1);
+    const flags = [...opp.flags.filter((f) => f !== NOT_A_FIT), ...(data.fits ? [] : [NOT_A_FIT]), ...data.cautions];
+    const now = nowIso();
     this.db.run(
       `UPDATE opportunities SET match_reason = ?, situation = ?, suggested_channel = ?, suggested_action = ?, relevance = ?, flags = ?,
-         state = CASE WHEN ? = 0 AND state = 'new' THEN 'dismissed' ELSE state END, updated_at = ? WHERE id = ?`,
-      [data.reason, data.situation, data.suggested_channel, data.suggested_action, relevance, [...opp.flags, ...data.cautions], data.fits ? 1 : 0, nowIso(), id],
+         ai_checked_at = ?, ai_fit = ?, top_pick = CASE WHEN ? = 0 THEN 0 ELSE top_pick END, updated_at = ? WHERE id = ?`,
+      [data.reason, data.situation, data.suggested_channel, data.suggested_action, relevance, [...new Set(flags)], now, data.fits ? 1 : 0, data.fits ? 1 : 0, now, id],
     );
     return { ...data, relevance };
+  }
+
+  /**
+   * Built-in AI fit check, run after every scan: checks the best-scoring unchecked opportunities with the AI
+   * (at most `pool` per run), then makes the `top` best confirmed fits the feed's top picks, in AI-score order.
+   * Opportunities whose folder doesn't allow AI, or any when no AI is connected, are left to the keyword ranking.
+   */
+  async rankWithAi(opts: { top?: number; pool?: number; onlyIds?: string[]; concurrency?: number } = {}) {
+    const top = opts.top ?? 20;
+    const pool = opts.pool ?? 40;
+    const report = { checked: 0, fits: 0, failed: 0, skippedNoPermission: 0, aiAvailable: this.ai.isAvailable(), topPicks: 0, errors: [] as string[] };
+    if (report.aiAvailable) {
+      const unchecked = this.db.all<{ id: string; project_id: string }>(
+        `SELECT id, project_id FROM opportunities WHERE state IN ('new','shortlisted') AND ai_checked_at IS NULL ORDER BY relevance DESC`,
+      ).filter((o) => !opts.onlyIds || opts.onlyIds.includes(o.id));
+      const allowed = new Map<string, boolean>();
+      const queue: string[] = [];
+      for (const o of unchecked) {
+        if (!allowed.has(o.project_id)) allowed.set(o.project_id, this.ai.canUseFor([o.project_id]));
+        if (!allowed.get(o.project_id)) report.skippedNoPermission++;
+        else if (queue.length < pool) queue.push(o.id);
+      }
+      const worker = async () => {
+        for (let id = queue.shift(); id; id = queue.shift()) {
+          try {
+            const r = await this.assessWithAi(id);
+            report.checked++;
+            if (r.fits) report.fits++;
+          } catch (err) {
+            report.failed++;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (report.errors.length < 3 && !report.errors.includes(msg)) report.errors.push(msg);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.max(1, opts.concurrency ?? 4) }, worker));
+    }
+    report.topPicks = this.refreshTopPicks(top);
+    return report;
+  }
+
+  /** Re-numbers the top picks: open, AI-confirmed fits, best AI score first. Returns how many there are. */
+  refreshTopPicks(top = 20): number {
+    return this.db.tx(() => {
+      this.db.run("UPDATE opportunities SET top_pick = 0 WHERE top_pick != 0");
+      const ids = this.db.all<{ id: string }>(
+        `SELECT id FROM opportunities WHERE ai_fit = 1 AND state IN ('new','shortlisted') ORDER BY relevance DESC LIMIT ?`,
+        [top],
+      );
+      ids.forEach((o, i) => this.db.run("UPDATE opportunities SET top_pick = ? WHERE id = ?", [i + 1, o.id]));
+      return ids.length;
+    });
   }
 }
 
@@ -292,6 +362,9 @@ export function opportunityToJson(row: Record<string, unknown>) {
     /** Short summary for the card; the AI fit check replaces the extracted gist with its own sentence. */
     situation: row.situation ? { headline: extracted.headline, gist: String(row.situation), source: "ai" as const } : { ...extracted, source: "extracted" as const },
     /** One line for the card: the AI fit check's own reason, or scenario · project · shared terms. */
+    /** Built-in AI check: place among the top picks (null if not one), and the verdict once checked. */
+    topPick: Number(row.top_pick ?? 0) || null,
+    aiCheck: row.ai_checked_at ? { fits: row.ai_fit === 1, checkedAt: String(row.ai_checked_at) } : null,
     why: row.situation ? String(row.match_reason) : whyLine(String(row.scenario), row.person_name as string | null, row.project_name as string | undefined, (scoreBreakdown.sharedTerms as string[] | undefined) ?? []),
     suggestion: scenarioInfo(String(row.scenario) as Scenario).contribution,
     projectId: String(row.project_id),

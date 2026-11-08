@@ -187,8 +187,11 @@ Results are sorted by `relevance` (0-1). Each opportunity has:
 ### `GET /opportunities/:id` · `PATCH /opportunities/:id`
 `PATCH` takes `{ state }`. Allowed transitions: `new` → `shortlisted`, `dismissed` or `acted_on`; `shortlisted` → `new`, `dismissed` or `acted_on`; `dismissed` → `new` or `shortlisted`. `acted_on` is final.
 
+### `POST /opportunities/rank` (built-in AI fit check)
+Body: `{ top?: 20, pool?: 40, onlyIds? }`. Checks up to `pool` of the best-scoring unchecked open opportunities with the AI (only for folders that allow AI), then numbers the `top` best confirmed fits as **top picks** (`topPick: 1..20`), which lead `GET /opportunities`. Poor fits get a flag and sink to the bottom; they are never dismissed automatically. Runs automatically after every scan (`POST /discovery/run` unless `rank: false`, which the app uses to show it as its own step) and after `POST /source-posts`. A changed project summary clears that project's verdicts so they are checked again. Returns `{ checked, fits, failed, skippedNoPermission, aiAvailable, topPicks, errors }`.
+
 ### `POST /opportunities/:id/assess`
-Optional AI check of whether the project genuinely meets what the author needs. Requires AI permission on the folder. If the project does not fit, a `new` opportunity is dismissed.
+Checks one opportunity with the AI (the same check `rank` runs). The app no longer has a button for it.
 
 ### `POST /opportunities/rematch`
 Body: `{ projectIds?, sinceDays? }`. Re-scores stored posts. Dismissed opportunities are never brought back.

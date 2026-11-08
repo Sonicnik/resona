@@ -31,3 +31,22 @@ test("scheduler runs overdue jobs once, persists run times, and records failures
   assert.equal(broken.lastError, "boom");
   db.close();
 });
+
+test("weekly review runs in the background only once there is a project, and writes its vault note", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { makeServices, tmpDir, writeFiles, SAMPLE_PROJECT } = await import("./helpers.ts");
+  const s = makeServices();
+  const job = () => s.scheduler.status().find((j) => j.name === "weekly-review")!;
+  assert.equal(job().enabled, false, "no projects yet: nothing to review");
+  const folder = tmpDir("proj-");
+  writeFiles(folder, SAMPLE_PROJECT);
+  s.projects.create({ folderPath: folder });
+  assert.equal(job().enabled, true);
+  const res = await s.scheduler.runJob("weekly-review");
+  assert.equal(res.status, "ok");
+  assert.equal(s.review.list().length, 1);
+  const reviews = path.join(s.vault.vaultDir, "Reviews");
+  assert.ok(fs.readdirSync(reviews).some((f) => f.startsWith("Weekly review ")), "note written with the review");
+  s.close();
+});
