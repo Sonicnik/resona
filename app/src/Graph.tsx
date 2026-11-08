@@ -35,6 +35,13 @@ export function levelOf(tie: number | undefined): number {
 }
 console.assert(levelOf(0) === 0 && levelOf(0.121) === 1 && levelOf(0.234) === 2 && levelOf(0.419) === 3 && levelOf(0.477) === 4 && levelOf(0.68) === 5, "level thresholds");
 
+/** Stable 0–1 value per id, for per-person variation that doesn't change between reloads. */
+function hash(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return (h >>> 0) / 4294967296;
+}
+
 const endId = (e: any) => (typeof e === "object" ? e.id : e);
 
 function canvasTexture(draw: (g: CanvasRenderingContext2D) => void) {
@@ -96,11 +103,13 @@ export function Graph(props: {
     focus: null as Set<string> | null,
     freeFlight: props.freeFlight,
     rotateOff: false, // set by Reset: the map stays still from then on
+    inset: 0, // px of canvas hidden behind the sidebar
     mouse: null as { x: number; y: number } | null,
     nodes: [] as any[],
     links: [] as any[],
   });
   const cb = useRef(props);
+  const firstData = useRef(true);
   cb.current = props;
 
   // "all" | "connected" | "1".."5": a level shows exactly that level; unconnected people appear only under "all".
@@ -129,35 +138,61 @@ export function Graph(props: {
     const r = 1 + 110 / h;
     graph.current.cameraPosition({ x: n.x * r, y: n.y * r, z: n.z * r }, n, reduceMotion ? 0 : 1600);
   };
-  const reset = () => {
+  /**
+   * Point the camera at a group of people: centre on them, look along the axis where the group is thinnest
+   * (so it spreads across the screen; kept in a raised band so "up" stays up), then take the closest distance
+   * where the group fits in 90% of the view, measured with real perspective.
+   */
+  const fitTo = (group: any[], ms: number) => {
     const g = graph.current;
-    if (!g) return;
-    st.current.rotateOff = true;
-    st.current.hovered = null;
-    g.controls().autoRotate = false;
-    // Find the closest camera distance where 95% of people project inside 90% of the view, measured with the
-    // real perspective (people nearer the camera look bigger). The library's zoomToFit measures meshes, not positions.
-    const pts = st.current.nodes.filter((n) => n.x != null).map((n) => new THREE.Vector3(n.x, n.y, n.z));
+    const pts = group.filter((n) => n.x != null).map((n) => new THREE.Vector3(n.x, n.y, n.z));
+    if (!g || !pts.length) return;
+    const center = pts.reduce((c, p) => c.add(p), new THREE.Vector3()).divideScalar(pts.length);
+    let dir = new THREE.Vector3(0.35, 0.35, 0.87).normalize();
+    if (pts.length >= 3) {
+      let best = Infinity;
+      for (let i = 0; i < 120; i++) {
+        const y = 1 - (2 * (i + 0.5)) / 120, r = Math.sqrt(1 - y * y), t = i * 2.399963; // Fibonacci sphere
+        if (y < 0.1 || y > 0.75) continue;
+        const cand = new THREE.Vector3(r * Math.cos(t), y, r * Math.sin(t));
+        const thickness = pts.reduce((sum, p) => sum + p.clone().sub(center).dot(cand) ** 2, 0);
+        if (thickness < best) [best, dir] = [thickness, cand];
+      }
+    }
+    const share = pts.length > 20 ? 0.95 : 1; // big groups may leave a few stragglers at the edge
     const probe = g.camera().clone();
-    const dir = new THREE.Vector3(0, 0.15, 0.99).normalize();
+    // The sidebar covers the left of the canvas: measure fit against the uncovered area (see applyInset).
+    const c = st.current.inset / Math.max(1, g.width()); // screen-space centre of the uncovered area
+    const halfW = 1 - c;
     const fits = (d: number) => {
-      probe.position.copy(dir).multiplyScalar(d);
-      probe.lookAt(0, 0, 0);
+      probe.position.copy(center).addScaledVector(dir, d);
+      probe.lookAt(center);
       probe.updateMatrixWorld();
       const reach = pts.map((p) => {
         const v = p.clone().project(probe);
-        return v.z > 1 ? Infinity : Math.max(Math.abs(v.x), Math.abs(v.y));
+        return v.z > 1 ? Infinity : Math.max(Math.abs(v.x - c) / halfW, Math.abs(v.y));
       }).sort((a, b) => a - b);
-      return (reach[Math.floor(reach.length * 0.95)] ?? 0) <= 0.9;
+      return (reach[Math.ceil(reach.length * share) - 1] ?? 0) <= 0.9;
     };
-    let lo = 20, hi = 4000;
-    for (let i = 0; i < 24; i++) {
-      const mid = (lo + hi) / 2;
-      if (fits(mid)) hi = mid;
-      else lo = mid;
-    }
-    const pos = dir.multiplyScalar(hi);
-    g.cameraPosition({ x: pos.x, y: pos.y, z: pos.z }, { x: 0, y: 0, z: 0 }, reduceMotion ? 0 : 900);
+    let lo = 90, hi = 5000; // never closer than 90, so two or three dots don't fill the screen
+    if (!fits(lo)) {
+      for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) hi = mid;
+        else lo = mid;
+      }
+    } else hi = lo;
+    const pos = center.clone().addScaledVector(dir, hi);
+    g.cameraPosition({ x: pos.x, y: pos.y, z: pos.z }, { x: center.x, y: center.y, z: center.z }, ms);
+  };
+  const stopOrbit = () => {
+    st.current.rotateOff = true;
+    if (graph.current) graph.current.controls().autoRotate = false;
+  };
+  const reset = () => {
+    stopOrbit();
+    st.current.hovered = null;
+    fitTo(st.current.nodes, reduceMotion ? 0 : 900);
   };
   props.handle.current = { flyTo, reset };
 
@@ -213,23 +248,41 @@ export function Graph(props: {
       .onBackgroundClick(() => cb.current.onSelect(null));
     const noMenu = (e: Event) => e.preventDefault();
     div.addEventListener("contextmenu", noMenu);
-    const ro = new ResizeObserver(() => g.width(div.clientWidth).height(div.clientHeight));
+    // Centre the view on the part of the canvas the sidebar doesn't cover.
+    const applyInset = () => {
+      const side = document.querySelector(".sidebar")?.getBoundingClientRect();
+      const box = div.getBoundingClientRect();
+      st.current.inset = side ? Math.max(0, side.right - box.left) : 0;
+      const cam = g.camera(), w = div.clientWidth, h = div.clientHeight;
+      cam.setViewOffset(w, h, -st.current.inset / 2, 0, w, h);
+      cam.updateProjectionMatrix();
+    };
+    const ro = new ResizeObserver(() => {
+      g.width(div.clientWidth).height(div.clientHeight);
+      applyInset();
+    });
     ro.observe(div);
+    applyInset();
 
     // Stronger relationships sit closer to you.
-    g.d3Force("link").distance((l: any) => ({ confirmed: 45, interaction: 75, proposed: 110 })[l.kind as "confirmed"] ?? 90);
-    g.d3Force("charge").strength(-110);
-    // Gentle pull toward the centre so people with no links don't drift off into the fog.
+    // Stronger ties sit closer to you; proposed links are loose so project clusters can form.
+    g.d3Force("link")
+      .distance((l: any) => (l.kind === "proposed" ? 120 + 90 * l.__jitter : 30 + 90 * (1 - (l.strength ?? 0.3))))
+      .strength((l: any) => (l.kind === "proposed" ? 0.06 : 0.7));
+    // People you know push others away harder; unconnected prospects pack into tighter project clusters.
+    g.d3Force("charge").strength((n: any) => (n.isSelf || levelOf(n.tieStrength) > 0 ? -110 : -30));
+    // Each person is pulled toward a target: you for connected people, their project's cluster for prospects,
+    // the middle for the rest. Pull strength varies per person so the map is lumpy rather than a perfect sphere.
     let simNodes: any[] = [];
     const gravity = Object.assign(
       (alpha: number) => {
         for (const n of simNodes) {
           if (n.fx != null) continue;
-          // People with no links have nothing holding them, so they get a stronger pull than linked people.
-          const k = (n.__isolated ? 0.15 : 0.02) * alpha;
-          n.vx -= n.x * k;
-          n.vy -= n.y * k;
-          n.vz -= n.z * k;
+          const a = n.__anchor as THREE.Vector3 | undefined;
+          const k = (n.__pull ?? 0.02) * alpha;
+          n.vx += ((a?.x ?? 0) - n.x) * k;
+          n.vy += ((a?.y ?? 0) - n.y) * k;
+          n.vz += ((a?.z ?? 0) - n.z) * k;
         }
       },
       { initialize: (nodes: any[]) => (simNodes = nodes) },
@@ -238,17 +291,6 @@ export function Graph(props: {
     g.scene().fog = new THREE.FogExp2(0x0b0819, 0.0022);
     g.cameraPosition({ x: 0, y: 30, z: 230 });
 
-    // Faint star dust for depth.
-    const dust = new Float32Array(1800 * 3);
-    for (let i = 0; i < dust.length; i += 3) {
-      const r = 260 + Math.random() * 700, t = Math.random() * Math.PI * 2, u = Math.acos(2 * Math.random() - 1);
-      dust[i] = r * Math.sin(u) * Math.cos(t);
-      dust[i + 1] = r * Math.sin(u) * Math.sin(t);
-      dust[i + 2] = r * Math.cos(u);
-    }
-    const dustGeo = new THREE.BufferGeometry();
-    dustGeo.setAttribute("position", new THREE.BufferAttribute(dust, 3));
-    g.scene().add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x9d93d6, size: 1.3, transparent: true, opacity: 0.55, depthWrite: false, fog: false })));
     const reticle = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticleTexture(), transparent: true, depthWrite: false, depthTest: false }));
     reticle.visible = false;
     g.scene().add(reticle);
@@ -356,20 +398,47 @@ export function Graph(props: {
     const byId = new Map(nodes.map((n: any) => [n.id, n]));
     const links = props.data.edges
       .filter((e: any) => byId.has(e.from) && byId.has(e.to))
-      .map((e: any) => ({ id: e.id, source: e.from, target: e.to, kind: LINK_KIND[e.kind] ?? "proposed", explanation: e.explanation, __a: byId.get(e.from), __b: byId.get(e.to) }));
+      .map((e: any) => ({ id: e.id, source: e.from, target: e.to, kind: LINK_KIND[e.kind] ?? "proposed", strength: e.strength, explanation: e.explanation, __a: byId.get(e.from), __b: byId.get(e.to) }));
     const linked = new Set(links.flatMap((l: any) => [l.source, l.target]));
-    for (const n of nodes) n.__isolated = !linked.has(n.id);
+    const projects = [...new Set(nodes.flatMap((n: any) => n.projectIds ?? []))].sort() as string[];
+    const anchors = new Map(
+      projects.map((id, i) => {
+        // Spread project clusters around you at different heights and distances.
+        const y = projects.length === 1 ? 0.2 : 0.7 - (1.4 * i) / (projects.length - 1), r = Math.sqrt(1 - y * y), t = i * 2.399963;
+        return [id, new THREE.Vector3(r * Math.cos(t), y, r * Math.sin(t)).multiplyScalar(170 + 70 * hash(id))];
+      }),
+    );
+    for (const n of nodes) {
+      n.__isolated = !linked.has(n.id);
+      const project = levelOf(n.tieStrength) === 0 ? n.projectIds?.[0] : undefined;
+      n.__anchor = project ? anchors.get(project) : undefined;
+      n.__pull = project ? 0.04 + 0.08 * hash(n.id) : levelOf(n.tieStrength) > 0 ? 0.02 : 0.06 + 0.14 * hash(n.id);
+    }
+    for (const l of links) l.__jitter = hash(l.id ?? `${l.source}-${l.target}`);
     st.current.nodes = nodes;
     st.current.links = links;
     g.graphData({ nodes, links });
     applyDim();
+    if (firstData.current) {
+      firstData.current = false;
+      setTimeout(() => fitTo(st.current.nodes, 0), 50); // open on a view of everyone, once the layout has positions
+    }
   }, [props.data]);
 
+  // Choosing a connection level frames just that level (and you).
   useEffect(() => {
-    Object.assign(st.current, { filter: props.filter, selected: props.selected, freeFlight: props.freeFlight });
+    if (st.current.filter === props.filter) return;
+    st.current.filter = props.filter;
+    stopOrbit();
+    fitTo(st.current.nodes.filter(visible), reduceMotion ? 0 : 900); // visible() always includes you
+    applyDim();
+  }, [props.filter]);
+
+  useEffect(() => {
+    Object.assign(st.current, { selected: props.selected, freeFlight: props.freeFlight });
     if (graph.current) graph.current.controls().autoRotate = rotating();
     applyDim();
-  }, [props.filter, props.selected, props.freeFlight]);
+  }, [props.selected, props.freeFlight]);
 
   return <div id="scene" ref={el} role="img" aria-label="3D network of people. Use Spotlight search (Command K) to open a person." />;
 }
