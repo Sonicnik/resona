@@ -21,6 +21,20 @@ export function nodeStatus(node: any, edges: any[]): NodeStatus {
 }
 console.assert(nodeStatus({ id: "a", interactionCount: 0 }, [{ kind: "proposed", from: "me", to: "a" }]) === "prospect", "proposed edge is not a relationship");
 
+/** Connection levels by tie strength (0–1, from the backend); people with no tie at all get no level. */
+export const LEVELS = [
+  { level: 5, name: "Inner circle", min: 0.65 },
+  { level: 4, name: "Close", min: 0.45 },
+  { level: 3, name: "Familiar", min: 0.3 },
+  { level: 2, name: "Acquainted", min: 0.2 },
+  { level: 1, name: "Light", min: 0 },
+];
+export function levelOf(tie: number | undefined): number {
+  if (!tie || tie <= 0) return 0;
+  return LEVELS.find((l) => tie >= l.min)!.level;
+}
+console.assert(levelOf(0) === 0 && levelOf(0.121) === 1 && levelOf(0.234) === 2 && levelOf(0.419) === 3 && levelOf(0.477) === 4 && levelOf(0.68) === 5, "level thresholds");
+
 const endId = (e: any) => (typeof e === "object" ? e.id : e);
 
 function canvasTexture(draw: (g: CanvasRenderingContext2D) => void) {
@@ -59,6 +73,8 @@ const reticleTexture = () =>
 
 export interface GraphHandle {
   flyTo(id: string): void;
+  /** Zoom out to show everyone and stop orbiting. */
+  reset(): void;
 }
 
 export function Graph(props: {
@@ -73,11 +89,27 @@ export function Graph(props: {
   const el = useRef<HTMLDivElement>(null);
   const graph = useRef<any>(null);
   // Mutable view state read by the render loop and accessor callbacks.
-  const st = useRef({ filter: props.filter, selected: props.selected, hovered: null as string | null, focus: null as Set<string> | null, freeFlight: props.freeFlight, nodes: [] as any[], links: [] as any[] });
+  const st = useRef({
+    filter: props.filter,
+    selected: props.selected,
+    hovered: null as string | null,
+    focus: null as Set<string> | null,
+    freeFlight: props.freeFlight,
+    rotateOff: false, // set by Reset: the map stays still from then on
+    mouse: null as { x: number; y: number } | null,
+    nodes: [] as any[],
+    links: [] as any[],
+  });
   const cb = useRef(props);
   cb.current = props;
 
-  const visible = (n: any) => !n || st.current.filter === "all" || n.isSelf || (n.projectIds ?? []).includes(st.current.filter);
+  // "all" | "connected" | "1".."5": a level shows exactly that level; unconnected people appear only under "all".
+  const visible = (n: any) => {
+    if (!n || n.isSelf || st.current.filter === "all") return true;
+    const lv = levelOf(n.tieStrength);
+    return st.current.filter === "connected" ? lv > 0 : lv === Number(st.current.filter);
+  };
+  const rotating = () => !st.current.freeFlight && !st.current.rotateOff && !reduceMotion;
   const applyDim = () => {
     const s = st.current;
     const focusId = s.hovered ?? s.selected;
@@ -97,7 +129,37 @@ export function Graph(props: {
     const r = 1 + 110 / h;
     graph.current.cameraPosition({ x: n.x * r, y: n.y * r, z: n.z * r }, n, reduceMotion ? 0 : 1600);
   };
-  props.handle.current = { flyTo };
+  const reset = () => {
+    const g = graph.current;
+    if (!g) return;
+    st.current.rotateOff = true;
+    st.current.hovered = null;
+    g.controls().autoRotate = false;
+    // Find the closest camera distance where 95% of people project inside 90% of the view, measured with the
+    // real perspective (people nearer the camera look bigger). The library's zoomToFit measures meshes, not positions.
+    const pts = st.current.nodes.filter((n) => n.x != null).map((n) => new THREE.Vector3(n.x, n.y, n.z));
+    const probe = g.camera().clone();
+    const dir = new THREE.Vector3(0, 0.15, 0.99).normalize();
+    const fits = (d: number) => {
+      probe.position.copy(dir).multiplyScalar(d);
+      probe.lookAt(0, 0, 0);
+      probe.updateMatrixWorld();
+      const reach = pts.map((p) => {
+        const v = p.clone().project(probe);
+        return v.z > 1 ? Infinity : Math.max(Math.abs(v.x), Math.abs(v.y));
+      }).sort((a, b) => a - b);
+      return (reach[Math.floor(reach.length * 0.95)] ?? 0) <= 0.9;
+    };
+    let lo = 20, hi = 4000;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) hi = mid;
+      else lo = mid;
+    }
+    const pos = dir.multiplyScalar(hi);
+    g.cameraPosition({ x: pos.x, y: pos.y, z: pos.z }, { x: 0, y: 0, z: 0 }, reduceMotion ? 0 : 900);
+  };
+  props.handle.current = { flyTo, reset };
 
   // Mount once.
   useEffect(() => {
@@ -108,8 +170,9 @@ export function Graph(props: {
     g.width(div.clientWidth)
       .height(div.clientHeight)
       .backgroundColor("rgba(0,0,0,0)")
+      .warmupTicks(120) // lay the map out before the first frame instead of animating the explosion
       .showNavInfo(false)
-      .nodeLabel((n: any) => (n.isSelf ? "" : `${n.label}${n.title ? " · " + n.title : ""}`))
+      .nodeLabel(() => "") // names are sprites that appear near the cursor; no extra tooltip
       .nodeThreeObject((n: any) => {
         const status: NodeStatus = n.__status;
         const r = (n.__r = RADIUS[status]);
@@ -156,6 +219,22 @@ export function Graph(props: {
     // Stronger relationships sit closer to you.
     g.d3Force("link").distance((l: any) => ({ confirmed: 45, interaction: 75, proposed: 110 })[l.kind as "confirmed"] ?? 90);
     g.d3Force("charge").strength(-110);
+    // Gentle pull toward the centre so people with no links don't drift off into the fog.
+    let simNodes: any[] = [];
+    const gravity = Object.assign(
+      (alpha: number) => {
+        for (const n of simNodes) {
+          if (n.fx != null) continue;
+          // People with no links have nothing holding them, so they get a stronger pull than linked people.
+          const k = (n.__isolated ? 0.15 : 0.02) * alpha;
+          n.vx -= n.x * k;
+          n.vy -= n.y * k;
+          n.vz -= n.z * k;
+        }
+      },
+      { initialize: (nodes: any[]) => (simNodes = nodes) },
+    );
+    g.d3Force("gravity", gravity);
     g.scene().fog = new THREE.FogExp2(0x0b0819, 0.0022);
     g.cameraPosition({ x: 0, y: 30, z: 230 });
 
@@ -175,17 +254,25 @@ export function Graph(props: {
     g.scene().add(reticle);
 
     const controls = g.controls();
-    controls.autoRotate = !reduceMotion;
+    controls.autoRotate = rotating();
     controls.autoRotateSpeed = 0.5;
     controls.enableDamping = true;
     let idle: number | undefined;
     controls.addEventListener("start", () => (clearTimeout(idle), (controls.autoRotate = false)));
     controls.addEventListener("end", () => {
       clearTimeout(idle);
-      idle = window.setTimeout(() => (controls.autoRotate = !st.current.freeFlight && !reduceMotion), 6000);
+      idle = window.setTimeout(() => (controls.autoRotate = rotating()), 6000);
     });
 
     // Free flight: WASD moves camera and orbit target together.
+    // Names show only near the cursor, so track it over the map.
+    const onMove = (e: PointerEvent) => {
+      const r = div.getBoundingClientRect();
+      st.current.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const onLeave = () => (st.current.mouse = null);
+    div.addEventListener("pointermove", onMove);
+    div.addEventListener("pointerleave", onLeave);
     const keys = new Set<string>();
     const down = (e: KeyboardEvent) => {
       if (!st.current.freeFlight || (e.target as HTMLElement).matches?.("input, textarea") || e.metaKey || e.ctrlKey) return;
@@ -202,11 +289,18 @@ export function Graph(props: {
       raf = requestAnimationFrame(loop);
       const cam = g.camera();
       const s = st.current;
-      // Names fade in as you get close; the focused person and their links always show.
+      // Thin the fog as the camera backs off, so a zoomed-out view isn't swallowed by it.
+      g.scene().fog.density = Math.min(0.0022, 0.5 / Math.max(1, cam.position.distanceTo(g.controls().target)));
+      // A name shows only for the selected dot, or when the cursor is near it (full within 70px, gone by 110px).
       for (const n of s.nodes) {
         if (!n.__label || n.x == null) continue;
-        const near = n.isSelf || s.focus?.has(n.id) ? 1 : Math.min(1, Math.max(0, (190 - cam.position.distanceTo(n)) / 90));
-        n.__label.material.opacity = near * (n.__dim ?? 1);
+        let show = n.id === s.selected ? 1 : 0;
+        if (!show && s.mouse && visible(n)) {
+          const p = g.graph2ScreenCoords(n.x, n.y, n.z);
+          show = Math.min(1, Math.max(0, (110 - Math.hypot(p.x - s.mouse.x, p.y - s.mouse.y)) / 40));
+        }
+        n.__label.material.opacity = show;
+        n.__label.visible = show > 0;
       }
       const sel = s.selected ? s.nodes.find((n) => n.id === s.selected) : null;
       reticle.visible = !!sel && sel.x != null;
@@ -239,6 +333,8 @@ export function Graph(props: {
       removeEventListener("keyup", up);
       removeEventListener("blur", blur);
       div.removeEventListener("contextmenu", noMenu);
+      div.removeEventListener("pointermove", onMove);
+      div.removeEventListener("pointerleave", onLeave);
       ro.disconnect();
       g._destructor?.();
       div.innerHTML = "";
@@ -261,6 +357,8 @@ export function Graph(props: {
     const links = props.data.edges
       .filter((e: any) => byId.has(e.from) && byId.has(e.to))
       .map((e: any) => ({ id: e.id, source: e.from, target: e.to, kind: LINK_KIND[e.kind] ?? "proposed", explanation: e.explanation, __a: byId.get(e.from), __b: byId.get(e.to) }));
+    const linked = new Set(links.flatMap((l: any) => [l.source, l.target]));
+    for (const n of nodes) n.__isolated = !linked.has(n.id);
     st.current.nodes = nodes;
     st.current.links = links;
     g.graphData({ nodes, links });
@@ -269,7 +367,7 @@ export function Graph(props: {
 
   useEffect(() => {
     Object.assign(st.current, { filter: props.filter, selected: props.selected, freeFlight: props.freeFlight });
-    if (graph.current) graph.current.controls().autoRotate = !props.freeFlight && !reduceMotion;
+    if (graph.current) graph.current.controls().autoRotate = rotating();
     applyDim();
   }, [props.filter, props.selected, props.freeFlight]);
 

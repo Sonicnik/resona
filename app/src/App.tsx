@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, AppCtx, initials, useCtx, type Ctx, type MenuItem, type Screen } from "./api";
-import { Graph, type GraphHandle } from "./Graph";
+import { Graph, LEVELS, levelOf, type GraphHandle } from "./Graph";
 import { Person } from "./Person";
 import { Home } from "./screens/Home";
 import { Opportunities } from "./screens/Opportunities";
@@ -12,7 +12,7 @@ const SCREENS: Array<[Screen, string]> = [["home", "Home"], ["opps", "Opportunit
 const STATUS_TEXT: Record<string, string> = { running: "Agent running", paused: "Agent paused", catching: "Catching up", offline: "Backend offline" };
 const HINT = (
   <>
-    <span>Drag to orbit</span><span>Scroll to zoom</span><span>Right-click a person</span><span><kbd>F</kbd> free flight</span>
+    <span>Drag to orbit</span><span>Scroll to zoom</span><span>Hover to see names</span><span><kbd>R</kbd> reset</span><span><kbd>F</kbd> free flight</span>
   </>
 );
 const FLY_HINT = (
@@ -227,11 +227,29 @@ export default function App() {
       }
       if ((e.target as HTMLElement).matches?.("input, textarea, select")) return;
       if (k === "f" && screen === "network") setFreeFlight((f) => !f);
+      if (k === "r" && screen === "network") resetView();
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   });
 
+  // Connection levels for the network filter; people with no connection are only in "All".
+  const levelFilters = useMemo(() => {
+    const people = (graphData?.nodes ?? []).filter((n: any) => !n.isSelf);
+    const count = (lv: number) => people.filter((n: any) => levelOf(n.tieStrength) === lv).length;
+    return [
+      ["all", "All", people.length, "Everyone, including people you haven't connected with"],
+      ["connected", "Connected", people.filter((n: any) => levelOf(n.tieStrength) > 0).length, "Levels 1–5"],
+      ...LEVELS.map((l) => [String(l.level), l.name, count(l.level), `Level ${l.level}: tie strength ${l.min > 0 ? `≥ ${l.min}` : "above 0"}`]),
+    ] as Array<[string, string, number, string]>;
+  }, [graphData]);
+  const resetView = () => {
+    setPersonId(null);
+    setFreeFlight(false);
+    setNetFilter("all");
+    setMenu(null);
+    graph.current?.reset();
+  };
   const names = useMemo(() => new Map<string, string>((graphData?.nodes ?? []).map((n: any) => [n.id, n.isSelf ? "You" : n.label])), [graphData]);
   const projectSeg = (value: string, set: (v: string) => void, first: [string, string], extra: Array<[string, string]> = []) => (
     <>
@@ -316,7 +334,14 @@ export default function App() {
             </div>
             <div className="tb-title"><h1>{SCREENS.find((s) => s[0] === screen)![1]}</h1><p>{SUBTITLE[screen]}</p></div>
             <div className="tb-spacer" />
-            <div className="seg glass thin" data-for="network" role="group" aria-label="Filter by project">{projectSeg(netFilter, setNetFilter, ["all", "Everyone"])}</div>
+            <div className="seg glass thin" data-for="network" role="group" aria-label="Filter by connection level">
+              {levelFilters.map(([id, name, count, title]) => (
+                <button key={id} aria-pressed={netFilter === id} title={title} onClick={() => setNetFilter(id)}>
+                  {name} <span className="seg-count">{count}</span>
+                </button>
+              ))}
+            </div>
+            <button className="btn glass thin net-reset" data-for="network" onClick={resetView} title="Zoom out to see everyone and stop orbiting (R)">Reset view</button>
             <div className="seg glass thin" data-for="opps" role="group" aria-label="Filter opportunities">{projectSeg(oppFilter, setOppFilter, ["all", "All"], [["followups", "Follow-ups"]])}</div>
             <div className="seg glass thin" data-for="posts" role="group" aria-label="Platform">
               <button aria-pressed={platform === "linkedin"} onClick={() => setPlatform("linkedin")}>LinkedIn</button>

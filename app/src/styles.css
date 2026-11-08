@@ -354,3 +354,7 @@ a.btn { text-decoration: none; color: inherit; }
 .cautions ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; color: var(--t2); }
 .save-state { font-size: 11.5px; }
 .chips .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* Network toolbar: level counts and the reset button. */
+.seg .seg-count { font-size: 11px; color: var(--t3); margin-left: 2px; }
+.seg button[aria-pressed="true"] .seg-count { color: var(--t2); }
+.net-reset { height: 30px; border-radius: 99px; padding: 0 14px; white-space: nowrap; }

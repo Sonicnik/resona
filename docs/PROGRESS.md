@@ -1,6 +1,6 @@
 # Progress and handoff (read this first)
 
-**Last updated:** 2026-11-07, by the assistant, after the Posts-tab fix.
+**Last updated:** 2026-11-07, by the assistant, after the network-view update.
 **Purpose:** everything needed to continue this project without the chat history.
 
 ## Do this first (2 minutes)
@@ -18,6 +18,7 @@
   2. `f7cad02` full-screen "Scanning in progress" overlay
   3. `0fb2fa6` overlay restyled as next-gen glass
   4. `c4667ab` Posts tab: layout fix, edit title and text, Write My Own
+  5. network view: connection-level filter, names near cursor only, Reset view (this commit and the progress doc)
 - The user said **"don't create PR yet"** for these. Open one only when asked.
 
 ## Run, test, reset
@@ -79,6 +80,7 @@
 | ChatGPT | "Continue with ChatGPT" = OpenAI's plan-usage OAuth for local/open-source apps (preview, Plus/Pro). `ai.provider` setting picks Claude or ChatGPT. |
 | Follow-ups | `POST /people/:id/drafts` drafts a follow-up to a known person. |
 | Spotlight | People + screens + `/search` content hits. |
+| Network view | Top bar filters by connection level (tie strength): All, Connected, Inner circle ≥0.65, Close ≥0.45, Familiar ≥0.30, Acquainted ≥0.20, Light >0. Unconnected people only in All. Names show only near the cursor (70px) or when clicked, including "You". **Reset view** (or R) zooms to fit 95% of people and stops orbiting for the session. |
 
 ## What exists (map)
 
@@ -102,6 +104,10 @@
 3. **Untested with a real account:** a Claude key, and a ChatGPT-plan draft (the user's ChatGPT sign-in works and did produce a real post draft). Structured output on ChatGPT is prompt-based JSON, so an occasional malformed reply shows "try again".
 4. **Not built:** Tauri window (needs Rust), real publishing (manual by design), PDF/DOCX parsing, Phase 2 CVs, authorized LinkedIn search.
 5. **Older Hacker News posts** in the demo DB keep old titles and run-together text until rescanned.
+
+## Gotcha: the browser pane can't animate
+
+The Browser pane runs pages with 0 animation frames per second (even when shown), so the 3D map doesn't move, tween or orbit there. To check network changes, measure with code: add a temporary `window.__dbgGraph = g` hook in `Graph.tsx`, project node positions, and remove the hook before committing. The graph uses `warmupTicks(120)`, so positions are settled at load.
 
 ## Environment facts
 
