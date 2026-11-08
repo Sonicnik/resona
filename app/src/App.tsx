@@ -122,26 +122,33 @@ export default function App() {
     try {
       await api("POST", "/jobs/rescan-folders/run");
       setScanStep(1);
-      const r = await api("POST", "/discovery/run", { rank: false });
-      setScanStep(2);
-      // Built-in AI fit check: the best matches are checked; the top 20 fits lead the Opportunities list.
-      const ai = await api("POST", "/opportunities/rank", {});
+      // Quick scan (about 5 s): one search per project and source, all at once, 3 s limit each. The scheduled scan stays thorough.
+      const r = await api("POST", "/discovery/run", { rank: false, queriesPerProject: 1, limitPerQuery: 2, timeoutMs: 3000 });
       const failed = r.queries.filter((q: any) => q.error).length;
       const skipped = r.skippedConnectors.map((c: any) => c.id).join(", ");
       notify(
         `Scan done: ${r.queries.length} searches, ${r.newPosts} new posts, ${r.opportunities} new opportunities.` +
-          (failed ? ` ${failed} searches failed (offline or rate-limited).` : "") +
-          (skipped ? ` Not searched: ${skipped}.` : "") +
-          (!ai.aiAvailable
-            ? " AI isn't connected, so matches are ranked by keywords only."
-            : ` AI checked ${ai.checked} match${ai.checked === 1 ? "" : "es"}: ${ai.topPicks} top pick${ai.topPicks === 1 ? "" : "s"}.` +
-              (ai.skippedNoPermission ? ` ${ai.skippedNoPermission} skipped (AI is off for their folder).` : "") +
-              (ai.failed ? ` ${ai.failed} couldn't be checked${ai.errors?.[0] ? ` (${ai.errors[0]})` : ""}.` : "")),
+          (failed ? ` ${failed} searches failed (offline, slow or rate-limited).` : "") +
+          (skipped ? ` Not searched: ${skipped}.` : ""),
       );
     } catch (e) {
       notify(`Scan failed: ${(e as Error).message}`);
+      return;
     } finally {
       setScanStep(null);
+      bump();
+    }
+    // Built-in AI fit check runs after the overlay closes; its top picks reorder the list when it finishes.
+    try {
+      const ai = await api("POST", "/opportunities/rank", { pool: 10 });
+      if (ai.aiAvailable && (ai.checked || ai.failed))
+        notify(
+          `AI checked ${ai.checked} match${ai.checked === 1 ? "" : "es"}: ${ai.topPicks} top pick${ai.topPicks === 1 ? "" : "s"}.` +
+            (ai.failed ? ` ${ai.failed} couldn't be checked${ai.errors?.[0] ? ` (${ai.errors[0]})` : ""}.` : ""),
+        );
+    } catch (e) {
+      notify(`AI check failed: ${(e as Error).message}`);
+    } finally {
       bump();
     }
   }, [scanning, notify, bump]);
@@ -493,7 +500,7 @@ const LEGEND: Array<[NodeStatus, string, string]> = [
 /** All, Close and the three largest industries get buttons; smaller groups go in the "More" menu. */
 const SHOWN_GROUPS = 5;
 
-const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches", "Checking the best matches with AI"];
+const SCAN_STEPS = ["Checking your project folders", "Searching sources and scoring matches"];
 const ORBITS = [
   { inset: 6, dur: 7, color: "var(--cyan)" },
   { inset: 20, dur: 4.5, color: "#8f8f8f" },

@@ -417,6 +417,7 @@ export function apiRouter(s: Services): Router {
         limitPerQuery: z.number().int().min(1).max(50).optional(),
         sinceDays: z.number().int().min(1).max(365).optional(),
         rank: z.boolean().optional(),
+        timeoutMs: z.number().int().min(500).max(60_000).optional(),
       }),
       req,
     );

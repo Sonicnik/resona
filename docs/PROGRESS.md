@@ -86,6 +86,7 @@
 ## Built-in features added 2026-11-08
 
 - **Weekly review:** made in the background by the `weekly-review` job (every 7 days; waits until a project exists; writes `Reviews/` vault note right away). Home's **Weekly Review** button only opens the in-app viewer (`app/src/screens/Review.tsx`) with earlier weeks in a menu. The seed no longer creates a review.
+- **Quick manual scan (~1 s):** the Scan button runs 1 search per project and source, all at once, 2 results each, 3 s limit per search (`timeoutMs` on `POST /discovery/run`). The AI fit check (pool 10) runs after the overlay closes and reorders top picks when done. The scheduled discovery job keeps the thorough defaults.
 - **AI fit check is built in:** no button. After every scan (and after Add Post) `rankWithAi` checks up to 40 of the best unchecked matches and makes the top 20 confirmed fits the feed's top picks (`#1 · 93%` badge). Poor fits sink with a flag, never auto-dismissed. Skips folders without AI permission; without AI the feed stays keyword-ranked.
 
 ## What exists (map)

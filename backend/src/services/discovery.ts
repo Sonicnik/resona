@@ -36,7 +36,7 @@ export class DiscoveryService {
     private readonly opportunities: OpportunityService,
   ) {}
 
-  async run(opts: { projectIds?: string[]; connectorIds?: string[]; queriesPerProject?: number; limitPerQuery?: number; sinceDays?: number; rank?: boolean } = {}): Promise<DiscoveryReport> {
+  async run(opts: { projectIds?: string[]; connectorIds?: string[]; queriesPerProject?: number; limitPerQuery?: number; sinceDays?: number; rank?: boolean; timeoutMs?: number } = {}): Promise<DiscoveryReport> {
     const report: DiscoveryReport = {
       startedAt: nowIso(),
       finishedAt: "",
@@ -60,27 +60,38 @@ export class DiscoveryService {
       });
 
     const touched = new Set<string>();
+    const searches: Array<Promise<void>> = [];
     for (const projectId of projectIds) {
       const profile = this.projects.profile(projectId);
       if (!profile) continue;
       const queries = queriesForContext(profile.keywords, profile.phrases, opts.queriesPerProject ?? 3);
       for (const connector of connectors) {
         for (const query of queries) {
-          try {
-            const posts = await connector.search(query, { limit: opts.limitPerQuery ?? 15, sinceDays: opts.sinceDays ?? 30 });
-            for (const p of posts) {
-              const res = this.opportunities.ingestPost(p);
-              touched.add(res.postId);
-              report.postsStored++;
-              if (res.created) report.newPosts++;
-            }
-            report.queries.push({ projectId, connector: connector.id, query, results: posts.length });
-          } catch (err) {
-            report.queries.push({ projectId, connector: connector.id, query, results: 0, error: err instanceof Error ? err.message : String(err) });
-          }
+          // All searches run at once; one that misses timeoutMs is reported as an error and its late results are dropped.
+          searches.push(
+            (async () => {
+              try {
+                const search = connector.search(query, { limit: opts.limitPerQuery ?? 15, sinceDays: opts.sinceDays ?? 30 });
+                let timer: NodeJS.Timeout | undefined;
+                const posts = opts.timeoutMs
+                  ? await Promise.race([search, new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("timed out")), opts.timeoutMs)))]).finally(() => clearTimeout(timer))
+                  : await search;
+                for (const p of posts) {
+                  const res = this.opportunities.ingestPost(p);
+                  touched.add(res.postId);
+                  report.postsStored++;
+                  if (res.created) report.newPosts++;
+                }
+                report.queries.push({ projectId, connector: connector.id, query, results: posts.length });
+              } catch (err) {
+                report.queries.push({ projectId, connector: connector.id, query, results: 0, error: err instanceof Error ? err.message : String(err) });
+              }
+            })(),
+          );
         }
       }
     }
+    await Promise.all(searches);
     for (const postId of touched) report.opportunities += this.opportunities.matchPost(postId).length;
     // Built-in AI fit check: the best matches are checked and the top 20 confirmed fits lead the feed.
     // The app runs this as its own step (rank: false here, then POST /opportunities/rank) to show progress.
