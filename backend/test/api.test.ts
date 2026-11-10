@@ -97,3 +97,21 @@ test("HTTP API: end-to-end outreach workflow", async () => {
     s.close();
   }
 });
+
+test("HTTP API: serves the built UI from RESONA_STATIC_DIR next to /api", async () => {
+  const s = makeServices();
+  const ui = tmpDir("ui-");
+  writeFiles(ui, { "index.html": "<!doctype html><title>Resona</title>" });
+  s.config.staticDir = ui;
+  const server = createApp(s).listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    assert.match(await (await fetch(base + "/")).text(), /<title>Resona<\/title>/);
+    assert.deepEqual(await (await fetch(base + "/api/health")).json(), { ok: true });
+    assert.equal((await fetch(base + "/missing.js")).status, 404);
+  } finally {
+    server.close();
+    s.close();
+  }
+});

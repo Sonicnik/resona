@@ -1,0 +1,79 @@
+{
+  "name": "resona-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Resona Mac app: Electron shell around the backend and the app UI",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:ui": "npm --prefix ../app run build",
+    "start": "npm run build:ui && npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "dist": "npm run build:ui && npm run build && electron-builder --mac",
+    "icons": "node scripts/icons.mjs",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "release": "npm run build:ui && npm run build && electron-builder --mac --publish always"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "productName": "Resona",
+  "main": "build/main.mjs",
+  "build": {
+    "appId": "com.sonicnik.resona",
+    "productName": "Resona",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/main.mjs",
+      "build/preload.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/backend.mjs",
+        "to": "backend.mjs"
+      },
+      {
+        "from": "../app/dist",
+        "to": "app-dist"
+      },
+      {
+        "from": "assets",
+        "to": ".",
+        "filter": [
+          "trayTemplate*.png"
+        ]
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "notarize": false
+    },
+    "dmg": {
+      "title": "Resona ${version}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Sonicnik",
+      "repo": "resona",
+      "releaseType": "draft"
+    }
+  }
+}

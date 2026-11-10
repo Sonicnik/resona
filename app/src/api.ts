@@ -44,6 +44,18 @@ export interface Ctx {
   /** Wraps an async action: reports errors as a notification and refreshes data afterwards. */
   act<T>(fn: () => Promise<T>, done?: string | ((r: T) => string | void)): Promise<T | undefined>;
 }
+/** Set by the Mac app's preload (desktop/src/preload.ts); undefined in a browser. */
+declare global {
+  interface Window {
+    resona?: {
+      desktop: true;
+      onMenu(cb: (id: string) => void): () => void;
+      getLoginItem(): Promise<boolean>;
+      setLoginItem(on: boolean): Promise<void>;
+    };
+  }
+}
+
 export type Screen = "home" | "opps" | "posts" | "network" | "projects" | "privacy";
 export type MenuItem = "-" | { label: string; key?: string; check?: boolean; disabled?: boolean; run?: () => void };
 

@@ -1,26 +1,19 @@
 # Progress and handoff (read this first)
 
-**Last updated:** 2026-11-07, by the assistant, after the network framing and layout update.
+**Last updated:** 2026-11-09, by the assistant, after building the Mac app (steps 1–7 of `docs/MAC_APP_PLAN.md`).
 **Purpose:** everything needed to continue this project without the chat history.
 
 ## Do this first (2 minutes)
 
-1. `cd` to the repo root (the worktree below) and run `git status -sb`. Expect `feature/backend-frontend-integration`, clean.
+1. `cd` to the repo root (the worktree below) and run `git status -sb`. Expect `feature/mac-app`, clean (local only, not pushed).
 2. Run `./start.sh`. It opens http://localhost:1420 with demo data.
 3. Read **"Open items"** below and pick the top one.
 
 ## Where things stand
 
-- **Working prototype.** The glass "star map" UI (`app/`) runs on the local backend (`backend/`) with live data. All 35 backend tests pass.
-- **On GitHub (`main`):** PR #2 (prototype, Claude/ChatGPT connect, scan, start.sh) and PR #3 (opportunity summaries) are merged.
-- **Pushed but not in `main` yet** (branch `feature/backend-frontend-integration`, 4 commits, **no PR**):
-  1. `29c8fff` "Open on <platform>" buttons on opportunities and the person panel
-  2. `f7cad02` full-screen "Scanning in progress" overlay
-  3. `0fb2fa6` overlay restyled as next-gen glass
-  4. `c4667ab` Posts tab: layout fix, edit title and text, Write My Own
-  5. network view: connection-level filter, names near cursor only, Reset view
-  6. network: choosing a level frames that level; no star dust; clustered, non-spherical layout
-- The user said **"don't create PR yet"** for these. Open one only when asked.
+- **Working prototype, now also a Mac app.** The glass "star map" UI (`app/`) runs on the local backend (`backend/`) in the browser (`./start.sh`) or as **Resona.app** (`desktop/`, Electron). 36 backend tests + 1 desktop test pass.
+- **On GitHub (`main`):** PRs #2, #3 and #4 are merged (prototype, opportunity summaries, the network/posts work).
+- **Local only (branch `feature/mac-app`, not pushed, no PR):** the Mac app (one commit). Push or open a PR only when the user asks.
 
 ## Run, test, reset
 
@@ -28,9 +21,10 @@
 | --- | --- |
 | Start everything (demo data) | `./start.sh` (re-running it restarts cleanly; Ctrl+C stops all) |
 | Start on real data | `./start.sh --real` |
-| Backend tests (35) | `cd backend && npm test` |
+| Backend tests (36) | `cd backend && npm test` |
 | Typecheck | `cd backend && npx tsc --noEmit` and `cd app && npx tsc --noEmit` |
 | Build the app | `cd app && npm run build` |
+| Run the Mac app (dev) | `cd desktop && npm install && npm start` (builds UI + bundles, uses real data on port 4317; stop `./start.sh` first, or set `RESONA_PORT` and `RESONA_DATA_DIR` for a test copy) |
 | Reset demo data | stop the app, delete `~/.resona-demo`, run `./start.sh` |
 
 - Ports: backend `127.0.0.1:4317`, app (Vite) `localhost:1420`, ChatGPT sign-in callback `127.0.0.1:1455`.
@@ -71,7 +65,8 @@
 
 | Topic | Decision |
 | --- | --- |
-| Shell | Browser first (Vite + React in `app/`). Tauri scaffold kept for later; Rust not installed. |
+| Shell | Browser for development (Vite + React in `app/`); Mac app is Electron in `desktop/` (2026-11-08, replaced the unused Tauri scaffold). |
+| Mac distribution | Unsigned (ad-hoc) DMG on GitHub Releases for the user and friends; no Apple Developer account, no notarization. Friends use Open Anyway once. Updates: notice + download link, not self-install (needs Developer ID). |
 | UI | `design/prototype.html` ported to React; CSS reused verbatim; 3D graph via `3d-force-graph` from npm. |
 | Demo | `backend/scripts/seed.ts` fills `~/.resona-demo` through the real API. |
 | Folder picking | Backend runs a native Finder dialog (`POST /system/choose`, osascript). |
@@ -101,10 +96,23 @@
 ## Open items (ranked)
 
 1. **Matcher is too loose (~1 hour).** A scan adds 100–200 weak opportunities: posts found by searching a project's own keywords always share those keywords. Tighten scoring in `backend/src/matching/matcher.ts`, e.g. require a real need (question/request scenario) or a higher threshold for connector results.
-2. **Open a PR for the 4 unmerged commits (5 minutes)**, only when the user asks.
+2. **Push `feature/mac-app` and open a PR**, only when the user asks. Then publish the first release (`desktop/README.md` → Release) so friends can download it.
 3. **Untested with a real account:** a Claude key, and a ChatGPT-plan draft (the user's ChatGPT sign-in works and did produce a real post draft). Structured output on ChatGPT is prompt-based JSON, so an occasional malformed reply shows "try again".
-4. **Not built:** Tauri window (needs Rust), real publishing (manual by design), PDF/DOCX parsing, Phase 2 CVs, authorized LinkedIn search.
-5. **Older Hacker News posts** in the demo DB keep old titles and run-together text until rescanned.
+4. **Mac app (planned 2026-11-08; steps 1–6 of 7 done, uncommitted):** `docs/MAC_APP_PLAN.md`.
+   - Step 1: `RESONA_STATIC_DIR` makes the backend serve `app/dist`; `desktop/build.mjs` bundles the backend to `desktop/build/backend.mjs` (runs on plain `node`, no tsx).
+   - Step 2: Electron 45 shell in `desktop/src/main.ts` + `preload.ts`. Runs the backend in a utility process on port 4317 with a per-launch API token (Electron adds the header; `curl` gets 401), loads the UI from it, opens links in the default browser, remembers window size, crash dialog with Restart, clean shutdown on quit. Chromium files live in `<data dir>/Electron`. Electron's Node 24 has `node:sqlite`.
+   - Step 3: inside the app (`html.desktop`, set in `app/src/main.tsx` when `window.resona` exists) the drawn menu bar, clock, window frame and traffic lights are hidden; native traffic lights sit where the drawn ones were; toolbar is the drag area. Native menus (`buildMenu` in `desktop/src/main.ts`) send ids to `onNativeMenu` in `App.tsx`; their shortcuts are display-only (`registerAccelerator: false`) so the UI's keydown handler keeps them. Edit/Window/Quit use Electron roles (needed for ⌘C/⌘V). UI renamed "Networking Agent" → **Resona** (the user confirmed the name). Toolbar title no longer overlaps the filter chips; chips scroll sideways when they don't fit.
+   - Step 4: menu bar icon (`desktop/assets/trayTemplate*.png`, dot + two rings, template image) with status, Open, Review N Opportunities, Scan Now (runs the UI's scan with its overlay), Pause/Resume, Open at Login, Quit. Closing the window (red button or ⌘W) only hides it; the agent keeps running; Dock click reopens; ⌘Q or the menu bar Quit really quits. Launched at login → stays hidden (`wasOpenedAtLogin`). The main process polls `/api/status` every 30 s and posts a notification when open opportunities go up while the window isn't focused. Privacy → Background work has an "Open Resona at login" switch (Mac app only).
+   - Not verified: the icon's look in the real menu bar, the Open at Login toggle (in dev it would register Electron.app itself, so it was left for the packaged build), and that notifications actually appear (the call was verified, not the macOS banner; an unsigned app may need notification permission).
+   - Quitting mid-request can leave `resona.db-wal`/`-shm` behind: the backend exits 0 but SQLite defers the final checkpoint while a statement is open. Verified harmless (integrity_check ok, data kept, files folded back on next open).
+   - Step 5: `cd desktop && npm run dist` → `desktop/dist/Resona-0.1.0-arm64.dmg` (116 MB; app 264 MB). electron-builder config is in `desktop/package.json` (`build`): arm64 only, ad-hoc signature (`identity: "-"`, required on Apple Silicon), no notarization, backend + UI + tray icons copied to `Contents/Resources`. Icons come from `desktop/scripts/icons.mjs` (`npm run icons`): dot with fading resonance rings, violet→teal; drafted by the assistant, the user can replace `assets/icon.png`/`icon.icns`. Tauri scaffold, deps and comments removed. README has the friend install steps (Open Anyway, `xattr -cr`).
+   - Verified: `codesign --verify` passes (adhoc), `spctl` rejects (expected without Apple account), packaged app runs on a test copy (UI, API, token 401, clean quit).
+   - Step 6: the app checks `api.github.com/repos/Sonicnik/resona/releases/latest` on launch and every 6 h (`checkForUpdate` in `desktop/src/main.ts`, version compare in `src/version.ts` with a test). A newer tag adds "Download Resona x.y.z…" to the menu bar icon and posts one notification; both open the release page. `npm run release` (needs `GH_TOKEN`) uploads the DMG to a draft release `v<version>`; release steps are in `desktop/README.md`. The repo is public (checked 2026-11-09), so no token ships in the app. `RESONA_RELEASES_URL` overrides the feed for testing only.
+   - Verified against a fake v0.1.1 feed with the packaged 0.1.0 app: request sent with UA `Resona/0.1.0`, notification and tray item appeared. No real release published yet (GitHub returns 404 until then, which the app ignores).
+   - Next: step 7, docs/dev workflow (mostly done along the way: README install section, `desktop/README.md`). Then commit on a `feature/mac-app` branch (the worktree branch is still `claude/...`, which the user's rules forbid on GitHub).
+   - Test tip: launch with `--remote-debugging-port=9333 --inspect=9334`; the renderer is reachable via DevTools JSON, and native menu items can be clicked from the main inspector with `process.getBuiltinModule("node:module").createRequire(process.cwd()+"/")("electron").Menu` (dynamic `import()` is blocked there).
+5. **Not built:** real publishing (manual by design), PDF/DOCX parsing, Phase 2 CVs, authorized LinkedIn search.
+6. **Older Hacker News posts** in the demo DB keep old titles and run-together text until rescanned.
 
 ## Gotcha: the browser pane can't animate
 
@@ -113,11 +121,11 @@ The Browser pane runs pages with 0 animation frames per second (even when shown)
 ## Environment facts
 
 - Repo: `https://github.com/Sonicnik/resona` (owner Sonicnik). Main branch `main`.
-- Worktree: `/Users/soni8nik/Personal/Programs/Competition/CubeBuildathon/.claude/worktrees/backend-frontend-integration-fec289`.
+- Worktree: `/Users/soni8nik/Personal/Programs/Competition/CubeBuildathon/.claude/worktrees/macbook-app-plan-c3bc1a` (branch `feature/mac-app`).
 - The user runs `./start.sh` in the app's terminal tab. Their AI provider is the **ChatGPT plan** (`gpt-6.1-sol`).
-- Node 25; backend uses built-in `node:sqlite`. No `gh` CLI. No Rust.
+- Node 25; backend uses built-in `node:sqlite` (Electron 45 ships Node 24, which has it too). No `gh` CLI. No Rust (not needed: the Mac app is Electron).
 - Product intent and research: `docs/product-reference.md`. API: `backend/docs/api-reference.md`.
 
 ## Next action
 
-Ask the user whether to start open item 1 (matcher tuning) or open the PR for the 4 unmerged commits.
+Ask the user whether to push `feature/mac-app` and open a PR, try the DMG on a friend's Mac, or start open item 1 (matcher tuning).

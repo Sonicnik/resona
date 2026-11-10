@@ -31,7 +31,7 @@ export class KeychainStore implements SecretStore {
     }
   }
   async set(name: string, value: string): Promise<void> {
-    // shortcut: `-w <value>` is briefly visible to local `ps`; upgrade to a native Keychain API in the Tauri app.
+    // shortcut: `-w <value>` is briefly visible to local `ps`; upgrade to a native Keychain API (e.g. via the Mac app in desktop/) if that matters.
     await run("/usr/bin/security", ["add-generic-password", "-U", "-s", SERVICE, "-a", name, "-l", `${SERVICE} ${name}`, "-w", value]);
   }
   async delete(name: string): Promise<void> {

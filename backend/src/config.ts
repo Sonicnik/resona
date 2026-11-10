@@ -11,6 +11,8 @@ export interface Config {
   allowedOrigins: string[];
   /** Optional bearer token required on every request. */
   apiToken?: string;
+  /** Built UI (app/dist) to serve at `/`, so the Mac app loads the UI and API from one origin. */
+  staticDir?: string;
   ai: {
     model: string;
     effort: "low" | "medium" | "high" | "xhigh" | "max";
@@ -53,6 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
     // Default: the app's Vite dev server (app/vite.config.ts).
     allowedOrigins: (env.RESONA_ALLOWED_ORIGINS ?? "http://localhost:1420").split(",").map((o) => o.trim()).filter(Boolean),
     apiToken: env.RESONA_API_TOKEN || undefined,
+    staticDir: env.RESONA_STATIC_DIR ? path.resolve(env.RESONA_STATIC_DIR) : undefined,
     ai: {
       model: env.RESONA_MODEL || "claude-opus-5-5",
       effort: effortEnv && EFFORTS.includes(effortEnv) ? effortEnv : "medium",
