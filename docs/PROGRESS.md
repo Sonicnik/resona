@@ -5,7 +5,7 @@
 
 ## Do this first (2 minutes)
 
-1. `cd` to the repo root (the worktree below) and run `git status -sb`. Expect `feature/mac-app`, clean (local only, not pushed).
+1. `cd` to the repo root (the worktree below) and run `git status -sb`. Expect `feature/mac-app`, clean, tracking `origin/feature/mac-app`.
 2. Run `./start.sh`. It opens http://localhost:1420 with demo data.
 3. Read **"Open items"** below and pick the top one.
 
@@ -13,7 +13,7 @@
 
 - **Working prototype, now also a Mac app.** The glass "star map" UI (`app/`) runs on the local backend (`backend/`) in the browser (`./start.sh`) or as **Resona.app** (`desktop/`, Electron). 36 backend tests + 1 desktop test pass.
 - **On GitHub (`main`):** PRs #2, #3 and #4 are merged (prototype, opportunity summaries, the network/posts work).
-- **Local only (branch `feature/mac-app`, not pushed, no PR):** the Mac app (one commit). Push or open a PR only when the user asks.
+- **Pushed, PR opened from the prefilled compare page (2026-11-09):** branch `feature/mac-app`, the Mac app. The user clicks Create pull request and Merge.
 
 ## Run, test, reset
 
@@ -96,7 +96,7 @@
 ## Open items (ranked)
 
 1. **Matcher is too loose (~1 hour).** A scan adds 100–200 weak opportunities: posts found by searching a project's own keywords always share those keywords. Tighten scoring in `backend/src/matching/matcher.ts`, e.g. require a real need (question/request scenario) or a higher threshold for connector results.
-2. **Push `feature/mac-app` and open a PR**, only when the user asks. Then publish the first release (`desktop/README.md` → Release) so friends can download it.
+2. **After the Mac app PR is merged:** publish the first release (`desktop/README.md` → Release) so friends can download it, then try the DMG on a friend's Mac.
 3. **Untested with a real account:** a Claude key, and a ChatGPT-plan draft (the user's ChatGPT sign-in works and did produce a real post draft). Structured output on ChatGPT is prompt-based JSON, so an occasional malformed reply shows "try again".
 4. **Mac app (planned 2026-11-08; steps 1–6 of 7 done, uncommitted):** `docs/MAC_APP_PLAN.md`.
    - Step 1: `RESONA_STATIC_DIR` makes the backend serve `app/dist`; `desktop/build.mjs` bundles the backend to `desktop/build/backend.mjs` (runs on plain `node`, no tsx).
@@ -128,4 +128,4 @@ The Browser pane runs pages with 0 animation frames per second (even when shown)
 
 ## Next action
 
-Ask the user whether to push `feature/mac-app` and open a PR, try the DMG on a friend's Mac, or start open item 1 (matcher tuning).
+Ask whether the Mac app PR is merged; then offer the first release (open item 2) or matcher tuning (open item 1).
