@@ -2,7 +2,19 @@
 
 A local-first AI networking app for Mac that turns your projects into personalized outreach, social post drafts, and a visual professional network.
 
-**Status:** First prototype. The local backend in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API; see the [API reference](backend/docs/api-reference.md)) is wired to the glass "star map" UI in [`app/`](app/) (React + Vite, ported from [`design/prototype.html`](design/prototype.html)). It runs in the browser for now; the Tauri window and authorized LinkedIn access are not yet implemented.
+**Status:** First prototype. The local backend in [`backend/`](backend/README.md) (TypeScript/Node, SQLite, an Obsidian-compatible Markdown vault, and the Claude API; see the [API reference](backend/docs/api-reference.md)) is wired to the glass "star map" UI in [`app/`](app/) (React + Vite, ported from [`design/prototype.html`](design/prototype.html)). It runs in the browser or as a Mac app ([`desktop/`](desktop/), Electron); authorized LinkedIn access is not yet implemented.
+
+## Install the Mac app
+
+Download `Resona-<version>-arm64.dmg` from [Releases](https://github.com/Sonicnik/resona/releases) (Apple Silicon Macs). The app isn't signed with an Apple Developer ID, so macOS blocks it the first time:
+
+1. Open the DMG, drag **Resona** to **Applications**, open it, and close the warning.
+2. Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to Resona, and enter your Mac password.
+3. If macOS says Resona "is damaged and can't be opened", run `xattr -cr /Applications/Resona.app` in Terminal and open it again.
+
+You only do this once per version. Resona then lives in the menu bar: closing the window keeps the agent working, and **Quit Resona** (⌘Q or the menu bar icon) stops it. Your data stays in `~/Library/Application Support/Resona`.
+
+To build the DMG yourself: `cd desktop && npm install && npm run dist` (output in `desktop/dist/`).
 
 ## Run the prototype
 

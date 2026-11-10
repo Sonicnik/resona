@@ -7,6 +7,7 @@ The API serves the local Mac app only:
 - It binds to loopback and rejects requests whose `Host` header is not `localhost`, `127.0.0.1` or `::1`.
 - Browser requests that carry an `Origin` header must come from an origin listed in `RESONA_ALLOWED_ORIGINS`.
 - If `RESONA_API_TOKEN` is set, every request needs `Authorization: Bearer <token>`.
+- If `RESONA_STATIC_DIR` is set (the Mac app sets it to the built UI), files in it are served at `/`, next to `/api`.
 
 Requests and responses are JSON. Timestamps are ISO 8601 strings in UTC.
 

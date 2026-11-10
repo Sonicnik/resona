@@ -43,6 +43,12 @@ body[data-status="catching"] .mb-dot::after { background: var(--cyan); }
 .window::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 9; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
 .window.zoomed { inset: 26px 0 0; border-radius: 0; }
 .window.closed { opacity: 0; transform: scale(.94) translateY(20px); pointer-events: none; }
+/* Inside the Mac app (desktop/): the real window replaces the drawn menu bar, frame and traffic lights. */
+.desktop .menubar, .desktop .window::after { display: none; }
+.desktop .window, .desktop .window.zoomed { inset: 0; border-radius: 0; box-shadow: none; transition: none; }
+.desktop .traffic { visibility: hidden; } /* keeps the space the native buttons sit in */
+.desktop .toolbar, .desktop .traffic { -webkit-app-region: drag; }
+.desktop .toolbar button { -webkit-app-region: no-drag; }
 
 .aurora { position: absolute; inset: 0; overflow: hidden; }
 .aurora i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; animation: drift 26s ease-in-out infinite alternate; }
@@ -99,7 +105,8 @@ body[data-status="catching"] .status .dot { background: var(--cyan); box-shadow:
 .tb-btn:hover { background: var(--inset); color: var(--t1); }
 .tb-btn[aria-disabled="true"] { opacity: .35; }
 .tb-btn svg { width: 15px; height: 15px; }
-.tb-title { min-width: 0; }
+.tb-title { min-width: 0; flex-shrink: 0; max-width: 32%; }
+.toolbar .seg { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .tb-title h1 { font-size: 15px; font-weight: 700; white-space: nowrap; }
 .tb-title p { font-size: 11px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-spacer { flex: 1; }

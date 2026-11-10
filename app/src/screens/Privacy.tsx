@@ -176,6 +176,20 @@ function Switch({ checked, label, onChange }: { checked: boolean; label: string;
   );
 }
 
+/** Mac app only: the login item lives in macOS, not in the backend's settings. */
+function OpenAtLogin() {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => void window.resona?.getLoginItem().then(setOn), []);
+  if (on === null) return null;
+  const label = "Open Resona at login (starts in the menu bar)";
+  return (
+    <div className="item">
+      <div className="grow">{label}</div>
+      <Switch checked={on} label={label} onChange={(v) => void window.resona?.setLoginItem(v).then(() => setOn(v))} />
+    </div>
+  );
+}
+
 function Exclusions({ p }: { p: any }) {
   const { act } = useCtx();
   const [add, setAdd] = useState("");
@@ -265,6 +279,7 @@ export function Privacy({ onConnect }: { onConnect: (name: string) => void }) {
             <Switch checked={Boolean(settings.data?.[key])} label={label} onChange={(v) => act(() => api("PATCH", "/settings", { [key]: v }))} />
           </div>
         ))}
+        {window.resona && <OpenAtLogin />}
       </div>
 
       <div className="section-title">What left this Mac</div>

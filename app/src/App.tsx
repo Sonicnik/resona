@@ -168,10 +168,10 @@ export default function App() {
 
   const MENUS: Record<string, () => MenuItem[]> = {
     app: () => [
-      { label: "About Networking Agent", run: () => notify(`Local-first networking agent. AI: ${status?.ai?.available ? status.ai.model : "offline"}.`) }, "-",
+      { label: "About Resona", run: () => notify(`Local-first networking agent. AI: ${status?.ai?.available ? status.ai.model : "offline"}.`) }, "-",
       { label: "Settings…", key: "⌘,", run: () => go("privacy") }, "-",
-      { label: "Hide Networking Agent", key: "⌘H", run: () => hideWindow(true) },
-      { label: "Quit Networking Agent", key: "⌘Q", run: () => notify("To quit, stop the backend (Ctrl+C in its terminal). Background work then pauses and catches up next time.") },
+      { label: "Hide Resona", key: "⌘H", run: () => hideWindow(true) },
+      { label: "Quit Resona", key: "⌘Q", run: () => notify("To quit, stop the backend (Ctrl+C in its terminal). Background work then pauses and catches up next time.") },
     ],
     file: () => [
       { label: "Add Project Folder…", key: "⌘O", run: () => (go("projects"), void addProjectFolder(ctx)) },
@@ -184,8 +184,8 @@ export default function App() {
       { label: "Free Flight", key: "F", run: () => (go("network"), setFreeFlight(true)) },
       { label: zoomed ? "Exit Full Screen" : "Enter Full Screen", key: "⌃⌘F", run: () => setZoomed(!zoomed) },
     ],
-    window: () => [{ label: "Minimize", key: "⌘M", run: () => hideWindow(true) }, { label: "Zoom", run: () => setZoomed(!zoomed) }, "-", { label: "Networking Agent", check: !closed, run: () => setClosed(false) }],
-    help: () => [{ label: "Networking Agent Help", run: () => window.open("https://github.com/Sonicnik/CubeBuildathon#readme", "_blank", "noopener") }],
+    window: () => [{ label: "Minimize", key: "⌘M", run: () => hideWindow(true) }, { label: "Zoom", run: () => setZoomed(!zoomed) }, "-", { label: "Resona", check: !closed, run: () => setClosed(false) }],
+    help: () => [{ label: "Resona Help", run: () => window.open("https://github.com/Sonicnik/resona#readme", "_blank", "noopener") }],
     agent: () => [
       { label: STATUS_TEXT[agentState], disabled: true }, "-",
       { label: paused ? "Resume Agent" : "Pause Agent", run: togglePause },
@@ -194,6 +194,25 @@ export default function App() {
       { label: `Review ${status?.counts?.openOpportunities ?? 0} Opportunities`, run: () => (setClosed(false), go("opps")) },
     ],
   };
+
+  // Native menu bar in the Mac app (desktop/src/main.ts) sends item ids; shortcuts stay with the keydown handler below.
+  const onNativeMenu = useRef<(id: string) => void>(undefined);
+  onNativeMenu.current = (id) => {
+    if (id.startsWith("screen:")) return go(id.slice(7) as Screen);
+    const run: Record<string, () => void> = {
+      settings: () => go("privacy"),
+      "add-folder": () => (go("projects"), void addProjectFolder(ctx)),
+      "import-linkedin": () => void importArchive(),
+      back,
+      forward: fwd,
+      search: () => setPalette(true),
+      "free-flight": () => (go("network"), setFreeFlight(true)),
+      scan: () => void scan(),
+      refresh: bump,
+    };
+    run[id]?.();
+  };
+  useEffect(() => window.resona?.onMenu((id) => onNativeMenu.current?.(id)), []);
 
   const personMenu = (n: any, ev: MouseEvent) =>
     openMenu([
@@ -284,7 +303,7 @@ export default function App() {
                 openMenu(MENUS[m](), r.left, r.bottom + 2, m);
               }
             }}>
-            {m === "app" ? "Networking Agent" : m[0].toUpperCase() + m.slice(1)}
+            {m === "app" ? "Resona" : m[0].toUpperCase() + m.slice(1)}
           </button>
         ))}
         <div className="mb-spacer" />
@@ -398,7 +417,7 @@ export default function App() {
       <div id="toast" className={`glass thick ${toast?.n ? "show" : ""}`} role="status" aria-live="polite">
         <div className="app-icon" />
         <div className="tx">
-          <b>Networking Agent</b>
+          <b>Resona</b>
           <span>{toast?.text}</span>
           {toast?.undo && <div><button className="btn" onClick={() => (toast.undo?.(), setToast(null))}>Undo</button></div>}
         </div>
